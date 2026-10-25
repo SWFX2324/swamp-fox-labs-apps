@@ -8,6 +8,9 @@ const fs = require('fs');
 const path = require('path');
 const net = require('net');
 const { AprsIs } = require('./aprs');
+const HamCore = require('./static/hamcore');
+const { HomeAssistant } = require('./ha');
+const SATS = require('./sats');
 
 const PORT = +(process.env.PORT || 8099);
 const STATIC_DIR = path.join(__dirname, 'static');
@@ -31,6 +34,10 @@ function loadOptions() {
     qrz_password: String(env.QRZ_PASS ?? o.qrz_password ?? ''),
     aprs_enabled: String(env.APRS ?? o.aprs_enabled ?? true) !== 'false',
     aprs_radius: +(env.APRS_RADIUS ?? o.aprs_radius ?? 100),
+    ha_sensors: String(env.HA_SENSORS ?? o.ha_sensors ?? true) !== 'false',
+    spot_watch: (env.SPOT_WATCH !== undefined ? env.SPOT_WATCH.split(',') : o.spot_watch || [])
+      .map(s => String(s).trim().toUpperCase()).filter(Boolean),
+    pota_alert_radius: +(env.POTA_RADIUS ?? o.pota_alert_radius ?? 100),
   };
 }
 const options = loadOptions();
@@ -366,46 +373,205 @@ class Cluster {
       if (comment && !dup.comment) dup.comment = comment;
       return;
     }
-    this.spots.unshift({
+    const spot = {
       time: t.toISOString(), freq: khz, band, dx, spotter: spotterCall,
       comment, mode: guessMode(khz, comment, band), skimmer: spotter.endsWith('-#'),
       dxCont: continentOf(dx), spotterConts: [continentOf(spotterCall)], count: 1,
-    });
+    };
+    this.spots.unshift(spot);
     if (this.spots.length > 400) this.spots.length = 400;
+    this.onSpot?.(spot);
   }
 }
 
 const cluster = new Cluster();
-const aprs = new AprsIs({ userAgent: 'SwampFoxLabsHamDash 0.3' });
+const aprs = new AprsIs({ userAgent: 'SwampFoxLabsHamDash 0.4' });
+const ha = new HomeAssistant();
+
+// A spot matches the watch list if the DX call equals an entry or starts with
+// it (so "VP8" catches every VP8 station).
+const watchMatch = call => options.spot_watch.find(w => call === w || call.startsWith(w)) || null;
+const recentAlerts = new Map();
+
+// Fire an alert at most once per key every 30 minutes.
+function alertOnce(key) {
+  const last = recentAlerts.get(key);
+  if (last && Date.now() - last < 30 * MIN) return false;
+  recentAlerts.set(key, Date.now());
+  if (recentAlerts.size > 2000) for (const [k, t] of recentAlerts) if (Date.now() - t > 2 * 60 * MIN) recentAlerts.delete(k);
+  return true;
+}
+
+cluster.onSpot = spot => {
+  const match = watchMatch(spot.dx);
+  if (!match || !alertOnce(`dx|${spot.dx}|${spot.band}`)) return;
+  ha.fireEvent('ham_dashboard_dx_spot', {
+    dx: spot.dx, frequency_khz: spot.freq, band: spot.band, mode: spot.mode,
+    spotter: spot.spotter, comment: spot.comment, time: spot.time, watch: match,
+  });
+};
+
+// ---------------------------------------------------------------- POTA
+
+function potaSpots() {
+  return cached('pota', MIN, async () => (await get('https://api.pota.app/spot/activator'))
+    .filter(s => !s.invalid && s.activator && s.reference)
+    .map(s => ({
+      id: s.spotId,
+      activator: String(s.activator).toUpperCase(),
+      freq: num(s.frequency), band: bandOf(num(s.frequency)), mode: String(s.mode || '').toUpperCase(),
+      reference: s.reference,
+      park: String(s.name || s.parkName || '').replace(/\s+/g, ' ').trim(),
+      location: s.locationDesc || '',
+      grid: s.grid6 || s.grid4 || '',
+      lat: num(s.latitude), lon: num(s.longitude),
+      time: /Z$/.test(s.spotTime) ? s.spotTime : `${s.spotTime}Z`,
+      spotter: s.spotter || '', comments: String(s.comments || '').trim(), source: s.source || '', count: s.count || 1,
+    })));
+}
+
+const potaRadiusKm = () => options.pota_alert_radius * (options.distance_units === 'mi' ? 1.609344 : 1);
+let potaSeeded = false;
+
+// Fire an event for each new POTA activation within the alert radius. The
+// first poll only records what's already on the air, so a restart doesn't
+// flood Home Assistant with alerts.
+async function checkPotaAlerts() {
+  const pos = gridToLatLon(options.grid);
+  if (!ha.enabled || !pos || options.pota_alert_radius <= 0) return;
+  let spots;
+  try { spots = await potaSpots(); } catch (e) { console.warn('[pota]', e.message); return; }
+  for (const s of spots) {
+    if (s.lat === null || s.lon === null) continue;
+    const dist = distanceKm(pos, s);
+    if (dist > potaRadiusKm()) continue;
+    const fresh = alertOnce(`pota|${s.activator}|${s.reference}|${s.band}`);
+    if (!fresh || !potaSeeded) continue;
+    ha.fireEvent('ham_dashboard_pota_spot', {
+      activator: s.activator, reference: s.reference, park: s.park, location: s.location,
+      frequency_khz: s.freq, band: s.band, mode: s.mode, comments: s.comments,
+      distance_km: Math.round(dist), bearing: HamCore.compass(bearingDeg(pos, s)), time: s.time,
+    });
+  }
+  potaSeeded = true;
+}
+
+// ---------------------------------------------------------------- satellites
+
+function satelliteTles() {
+  // CelesTrak asks clients not to re-download unchanged data; elements only
+  // update a few times a day.
+  return cached('tles', 12 * 60 * MIN, async () => {
+    const tles = SATS.parseTles(await get('https://celestrak.org/NORAD/elements/gp.php?GROUP=amateur&FORMAT=tle', 'text'));
+    if (!tles.size) throw new Error('CelesTrak returned no elements');
+    return tles;
+  });
+}
+
+function satellitePasses(pos) {
+  return cached(`sats-${pos.lat.toFixed(2)},${pos.lon.toFixed(2)}`, 10 * MIN, async () =>
+    ({ computed: new Date().toISOString(), sats: SATS.predict(await satelliteTles(), pos, 24) }));
+}
+
+// ---------------------------------------------------------------- Home Assistant entities
+
+const slug = s => s.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+const fmtMHzRange = f => (Array.isArray(f) ? `${f[0].toFixed(3)}-${f[1].toFixed(3)}` : f?.toFixed(3));
+
+async function haEntities() {
+  const pos = gridToLatLon(options.grid);
+  const now = Date.now();
+  const [hq, scales, kpData, wind, xr, iono] = await Promise.all([hamqsl(), noaaScales(), kp(), solarWind(), xray(), ionosondes()].map(settle));
+  const past = (kpData || []).filter(k => k.kind !== 'predicted' && Date.parse(k.time) <= now);
+  const kpNow = past.length ? past[past.length - 1].kp : hq?.k ?? null;
+  const out = [];
+  const sensor = (id, state, attrs) => out.push([`sensor.ham_${id}`, state, attrs]);
+
+  sensor('solar_flux', hq?.sfi ?? wind?.f107, { friendly_name: 'Solar flux index', unit_of_measurement: 'sfu', state_class: 'measurement', icon: 'mdi:white-balance-sunny' });
+  sensor('sunspot_number', hq?.ssn, { friendly_name: 'Sunspot number', state_class: 'measurement', icon: 'mdi:weather-sunny-alert' });
+  sensor('a_index', hq?.a, { friendly_name: 'A-index', state_class: 'measurement', icon: 'mdi:magnet' });
+  sensor('k_index', kpNow, { friendly_name: 'K-index', state_class: 'measurement', icon: 'mdi:magnet-on', geomagnetic_field: hq?.geomagfield ?? null });
+  sensor('xray_flux', xr?.current ?? hq?.xray, { friendly_name: 'X-ray flux', icon: 'mdi:flash-alert', flux_w_m2: xr?.flux ?? null, peak_6h: xr?.max6h ?? null });
+  sensor('solar_wind_speed', wind?.speed ?? hq?.solarwind, { friendly_name: 'Solar wind speed', unit_of_measurement: 'km/s', state_class: 'measurement', icon: 'mdi:weather-windy' });
+  sensor('bz', wind?.bz ?? hq?.bz, { friendly_name: 'Interplanetary Bz', unit_of_measurement: 'nT', state_class: 'measurement', icon: 'mdi:compass-outline' });
+  sensor('noise_floor', hq?.signalnoise, { friendly_name: 'Estimated noise floor', icon: 'mdi:waveform' });
+
+  const cur = scales?.current;
+  for (const [k, name, icon] of [['R', 'radio blackout', 'mdi:signal-off'], ['S', 'solar radiation storm', 'mdi:radioactive'], ['G', 'geomagnetic storm', 'mdi:earth']]) {
+    sensor(`noaa_${k.toLowerCase()}_scale`, cur ? cur[k]?.scale ?? 0 : null, {
+      friendly_name: `NOAA ${name} scale`, state_class: 'measurement', icon,
+      level: cur ? `${k}${cur[k]?.scale ?? 0}` : null, description: cur?.[k]?.text ?? null,
+    });
+  }
+  out.push(['binary_sensor.ham_radio_blackout', (cur?.R?.scale ?? 0) >= 1 ? 'on' : 'off', { friendly_name: 'HF radio blackout', icon: 'mdi:signal-off', level: `R${cur?.R?.scale ?? 0}` }]);
+  out.push(['binary_sensor.ham_geomagnetic_storm', (cur?.G?.scale ?? 0) >= 1 || kpNow >= 5 ? 'on' : 'off', { friendly_name: 'Geomagnetic storm', icon: 'mdi:earth', level: `G${cur?.G?.scale ?? 0}`, k_index: kpNow }]);
+
+  // Local band estimate, the same math the dashboard uses.
+  const station = pos && HamCore.nearestIonosonde(pos, iono || []);
+  const sunAlt = pos ? HamCore.sunAltitude(HamCore.sunPosition(new Date()), pos.lat, pos.lon) : 0;
+  sensor('local_muf', station ? +station.mufd.toFixed(1) : null, {
+    friendly_name: 'Local MUF (3000 km)', unit_of_measurement: 'MHz', state_class: 'measurement', icon: 'mdi:sine-wave',
+    ionosonde: station?.name ?? null, distance_km: station ? Math.round(station.dist) : null, measured: station?.time ?? null, fof2_mhz: station?.fof2 ?? null,
+  });
+  const groups = Object.fromEntries((hq?.bands || []).map(b => [b.name, b]));
+  for (const [band, mhz, group] of HamCore.HF_BANDS) {
+    const r = station ? HamCore.rateBand(mhz, station.mufd, sunAlt, kpNow ?? 0) : null;
+    sensor(`band_${band}`, r ? r[0].toUpperCase() + r.slice(1) : null, {
+      friendly_name: `${band} conditions`, icon: 'mdi:radio-tower', frequency_mhz: mhz,
+      hamqsl_day: groups[group]?.day ?? null, hamqsl_night: groups[group]?.night ?? null,
+      sun: sunAlt > -0.833 ? 'day' : 'night',
+    });
+  }
+
+  if (pos) {
+    try {
+      const { sats } = await satellitePasses(pos);
+      const upcoming = [];
+      for (const s of sats) {
+        const passes = s.passes.filter(p => Date.parse(p.los) > now);
+        upcoming.push(...passes.map(p => ({ s, p })));
+        const p = passes.find(x => x.maxEl >= 10);
+        sensor(`next_pass_${slug(s.name)}`, p ? p.aos : null, {
+          friendly_name: `${s.name} next pass`, device_class: 'timestamp', icon: 'mdi:satellite-variant',
+          max_elevation: p?.maxEl ?? null, aos_azimuth: p ? Math.round(p.aosAz) : null, los_azimuth: p ? Math.round(p.losAz) : null,
+          los: p?.los ?? null, duration_min: p?.durationMin ?? null, in_progress: p ? Date.parse(p.aos) <= now : false,
+          mode: s.mode, uplink_mhz: fmtMHzRange(s.uplink) ?? null, downlink_mhz: fmtMHzRange(s.downlink) ?? null, tone: s.tone ?? null,
+        });
+      }
+      const best = upcoming.filter(x => x.p.maxEl >= 30).sort((a, b) => Date.parse(a.p.aos) - Date.parse(b.p.aos))[0];
+      sensor('next_good_pass', best ? best.p.aos : null, {
+        friendly_name: 'Next good satellite pass', device_class: 'timestamp', icon: 'mdi:satellite-uplink',
+        satellite: best?.s.name ?? null, max_elevation: best?.p.maxEl ?? null, duration_min: best?.p.durationMin ?? null,
+        aos_azimuth: best ? Math.round(best.p.aosAz) : null, mode: best?.s.mode ?? null,
+      });
+    } catch (e) { console.warn('[ha] satellites:', e.message); }
+
+    try {
+      const radius = potaRadiusKm() || 400;
+      const near = (await potaSpots())
+        .filter(s => s.lat !== null && s.lon !== null)
+        .map(s => ({ s, d: distanceKm(pos, s) }))
+        .filter(x => x.d <= radius)
+        .sort((a, b) => a.d - b.d);
+      sensor('pota_nearby', near.length, {
+        friendly_name: 'POTA activations nearby', icon: 'mdi:pine-tree', state_class: 'measurement',
+        radius_km: Math.round(radius),
+        spots: near.slice(0, 10).map(({ s, d }) => ({ activator: s.activator, reference: s.reference, park: s.park, frequency_khz: s.freq, mode: s.mode, distance_km: Math.round(d) })),
+      });
+    } catch (e) { console.warn('[ha] pota:', e.message); }
+  }
+  return out;
+}
+
+async function publishHa() {
+  if (!ha.enabled) return;
+  try { await ha.publish(await haEntities()); } catch (e) { console.warn('[ha]', e.message); }
+}
 
 // ---------------------------------------------------------------- geo
 
-const RAD = Math.PI / 180;
+const { gridToLatLon, distanceKm, bearingDeg } = HamCore;
 const DAY = 24 * 60 * MIN;
-
-function distanceKm(a, b) {
-  const dLat = (b.lat - a.lat) * RAD, dLon = (b.lon - a.lon) * RAD;
-  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * RAD) * Math.cos(b.lat * RAD) * Math.sin(dLon / 2) ** 2;
-  return 2 * 6371 * Math.asin(Math.min(1, Math.sqrt(h)));
-}
-
-function gridToLatLon(grid) {
-  const m = String(grid || '').trim().toUpperCase().match(/^([A-R])([A-R])(\d)(\d)([A-X])?([A-X])?/);
-  if (!m) return null;
-  let lon = (m[1].charCodeAt(0) - 65) * 20 - 180 + +m[3] * 2;
-  let lat = (m[2].charCodeAt(0) - 65) * 10 - 90 + +m[4];
-  if (m[5] && m[6]) {
-    lon += (m[5].charCodeAt(0) - 65) / 12 + 1 / 24;
-    lat += (m[6].charCodeAt(0) - 65) / 24 + 1 / 48;
-  } else { lon += 1; lat += 0.5; }
-  return { lat, lon };
-}
-
-function bearingDeg(a, b) {
-  const y = Math.sin((b.lon - a.lon) * RAD) * Math.cos(b.lat * RAD);
-  const x = Math.cos(a.lat * RAD) * Math.sin(b.lat * RAD) - Math.sin(a.lat * RAD) * Math.cos(b.lat * RAD) * Math.cos((b.lon - a.lon) * RAD);
-  return (Math.atan2(y, x) / RAD + 360) % 360;
-}
 
 // ---------------------------------------------------------------- repeaters (HearHam)
 
@@ -593,7 +759,18 @@ async function api(route, q, res) {
         callsign: options.callsign, grid: options.grid, distance_units: options.distance_units,
         cluster: { status: cluster.status, host: options.dx_cluster_host, error: cluster.error },
         qrz: qrzConfigured(),
+        ha: ha.status(),
+        spot_watch: options.spot_watch,
       });
+    case '/api/pota':
+      return send(res, 200, { spots: await potaSpots() });
+    case '/api/satellites': {
+      const lat = num(q.get('lat')), lon = num(q.get('lon'));
+      if (lat === null || lon === null || Math.abs(lat) > 90 || Math.abs(lon) > 180) return send(res, 400, { error: 'Set a valid grid square' });
+      const pos = { lat, lon };
+      const passes = await satellitePasses(pos);
+      return send(res, 200, { ...passes, now: SATS.positionsNow(await satelliteTles(), pos) });
+    }
     case '/api/repeaters': {
       const lat = num(q.get('lat')), lon = num(q.get('lon'));
       const radius = Math.min(Math.max(num(q.get('radius')) || 80, 5), 400);
@@ -663,4 +840,12 @@ http.createServer(async (req, res) => {
     center: gridToLatLon(options.grid),
     radiusKm: Math.min(Math.max(options.aprs_radius, 10), 300) * (options.distance_units === 'mi' ? 1.609344 : 1),
   });
+  ha.start(options.ha_sensors);
+  if (ha.enabled) {
+    console.log('[ha] publishing sensors to Home Assistant');
+    setTimeout(publishHa, 20_000);
+    setInterval(publishHa, 5 * MIN);
+    setTimeout(checkPotaAlerts, 25_000);
+    setInterval(checkPotaAlerts, 2 * MIN);
+  }
 });

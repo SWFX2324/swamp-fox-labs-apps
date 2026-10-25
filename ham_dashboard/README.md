@@ -17,6 +17,12 @@ and dark mode.
 - **Repeaters** tab: nearby repeaters on a map and in a filterable list, from HearHam
 - **APRS** tab: live stations, tracks and local weather stations around you, from
   APRS-IS (receive-only)
+- **POTA** tab: Parks on the Air activators on a world map and in a filterable list
+- **Satellites** tab: pass predictions with a sky plot and Doppler-corrected
+  frequencies for ISS, SO-50, RS-44 and more
+- **Home Assistant sensors and alerts**: band conditions, space weather, satellite
+  passes and POTA activity as entities, plus events for watched DX and nearby POTA
+  activations
 - **Callsign lookup** tab: QRZ.com (with your own login) or free FCC data for US
   calls, with beam heading and great-circle path from your QTH
 
@@ -24,7 +30,10 @@ After installing, set your `callsign` and `grid` on the **Configuration** tab. A
 your QRZ username and password there too if you want worldwide callsign lookups.
 See the **Documentation** tab for details.
 
-Data from N0NBH/HamQSL, NOAA SWPC, KC2G, PSKReporter, HearHam, QRZ.com, callook.info
-and the VE7CC DX cluster. The world
-outline comes from [world-atlas](https://github.com/topojson/world-atlas) (Natural Earth,
-public domain).
+Data from N0NBH/HamQSL, NOAA SWPC, KC2G, PSKReporter, HearHam, APRS-IS, POTA,
+CelesTrak, QRZ.com, callook.info and the VE7CC DX cluster. The world outline comes
+from [world-atlas](https://github.com/topojson/world-atlas) (Natural Earth, public
+domain).
+
+Satellite orbits are computed with [satellite.js](https://github.com/shashwatak/satellite-js)
+5.0.0 (MIT License, included in `app/lib`).

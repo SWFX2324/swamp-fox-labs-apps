@@ -29,3 +29,12 @@ configuration:
   aprs_radius:
     name: APRS range
     description: How far around your grid square to receive APRS stations, in your distance units (10-300).
+  ha_sensors:
+    name: Home Assistant sensors
+    description: Publish solar, band, satellite and POTA data as sensor.ham_* and binary_sensor.ham_* entities, and fire ham_dashboard_* events for alerts.
+  spot_watch:
+    name: DX spot watch list
+    description: Callsigns or prefixes to watch on the DX cluster (e.g. VP8PJ or 3Y0). A match fires a ham_dashboard_dx_spot event you can use in automations.
+  pota_alert_radius:
+    name: POTA alert radius
+    description: Fire a ham_dashboard_pota_spot event when a new POTA activation is spotted within this distance, in your distance units. 0 turns POTA alerts off.

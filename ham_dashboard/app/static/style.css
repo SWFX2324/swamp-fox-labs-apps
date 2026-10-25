@@ -382,3 +382,27 @@ table.aprs-table td:last-child .sub { white-space: normal; max-width: 260px; }
   .views .long { display: none; }
   .views .short { display: inline; }
 }
+
+/* ------------------------------------------------------------ POTA, satellites */
+.data tr.watched td { background: color-mix(in srgb, var(--warning) 16%, transparent); }
+.data tr.watched td:first-child { box-shadow: inset 3px 0 0 var(--warning); }
+.data tr.pass-row { cursor: pointer; }
+.data tr.pass-row:hover td { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.data tr.pass-row.selected td { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.data tr.pass-row.selected td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+.data tr.pass-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.el-bar { height: 4px; border-radius: 2px; background: var(--grid-line); margin-top: 4px; min-width: 40px; }
+.el-bar span { display: block; height: 100%; border-radius: 2px; background: var(--accent); }
+.mini-table.doppler td { vertical-align: top; }
+.mini-table.doppler .sub { font-size: 11px; color: var(--muted); }
+#passDetail .sun-times { margin-top: 12px; }
+@media (max-width: 600px) {
+  .views { overflow-x: auto; scrollbar-width: none; }
+  .views button { flex: none; }
+}
+.map-wrap.local:not(.aprs) { max-width: 560px; margin-inline: auto; }
+.map-wrap.local.sky { max-width: 420px; }
+@media (max-width: 600px) {
+  .views { flex-wrap: nowrap; }
+  .el-bar { min-width: 26px; }
+}

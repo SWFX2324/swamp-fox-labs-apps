@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.4.0
+
+- **Home Assistant sensors**: solar and geomagnetic indices, NOAA R/S/G scales,
+  storm and blackout binary sensors, local MUF, per-band conditions (80 m to 6 m),
+  next satellite passes and nearby POTA activations, as `sensor.ham_*` and
+  `binary_sensor.ham_*` entities.
+- **Alerts**: `ham_dashboard_dx_spot` events for callsigns on your new `spot_watch`
+  list, and `ham_dashboard_pota_spot` events for activations within the new
+  `pota_alert_radius`. Watched callsigns are highlighted in the DX spots table.
+- New **POTA** tab: activators on the air on a world map and in a filterable list.
+- New **Satellites** tab: 24-hour pass predictions for ISS, SO-50, PO-101, AO-91,
+  RS-44, FO-29 and AO-7, with a sky plot and Doppler-corrected frequencies.
+- The band estimate now lives in one shared module used by both the dashboard and
+  the Home Assistant sensors, so they always agree.
+- On phones the tab bar scrolls sideways and keeps the active tab in view.
+
 ## 0.3.0
 
 - New **APRS** tab: live stations around you from APRS-IS (receive-only), on a

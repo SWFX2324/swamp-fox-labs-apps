@@ -16,6 +16,8 @@
       <button type="button" data-view="weather" aria-selected="true"><span class="long">Space weather</span><span class="short">Weather</span></button>
       <button type="button" data-view="repeaters" aria-selected="false">Repeaters</button>
       <button type="button" data-view="aprs" aria-selected="false">APRS</button>
+      <button type="button" data-view="pota" aria-selected="false">POTA</button>
+      <button type="button" data-view="sats" aria-selected="false"><span class="long">Satellites</span><span class="short">Sats</span></button>
       <button type="button" data-view="lookup" aria-selected="false"><span class="long">Callsign lookup</span><span class="short">Lookup</span></button>
     </nav>
     <button class="station" id="stationBtn" type="button" title="Station settings">
@@ -244,6 +246,71 @@
     </section>
   </main>
 
+  <main class="grid view" id="view-pota" hidden>
+    <section class="card span-7" aria-labelledby="h-potamap">
+      <div class="card-head">
+        <h2 id="h-potamap">Parks on the Air</h2>
+        <span class="meta" id="potaStatus"></span>
+      </div>
+      <div class="map-wrap"><canvas id="potaMap" aria-label="World map of POTA activators on the air"></canvas></div>
+      <div class="map-legend" id="potaLegend"></div>
+    </section>
+
+    <section class="card span-5" aria-labelledby="h-potalist">
+      <div class="card-head">
+        <h2 id="h-potalist">Activators on the air</h2>
+        <span class="meta" id="potaMeta"></span>
+      </div>
+      <div class="filters">
+        <div class="chips" id="potaBandChips"></div>
+        <div class="filter-row">
+          <label>Mode
+            <select id="potaMode"><option value="">All</option><option value="CW">CW</option><option value="SSB">Phone</option><option value="DIGI">Digital</option></select>
+          </label>
+          <label>Within <select id="potaRange"></select></label>
+          <label>Sort
+            <select id="potaSort"><option value="new">Newest</option><option value="near">Nearest</option></select>
+          </label>
+          <label class="grow">Search <input type="search" id="potaSearch" placeholder="Call, park or state"></label>
+        </div>
+      </div>
+      <div class="table-wrap tall">
+        <table class="data" id="potaTable"></table>
+      </div>
+      <p class="note">Spots from <a href="https://pota.app/" target="_blank" rel="noopener">pota.app</a>, refreshed every minute while this tab is open.</p>
+    </section>
+  </main>
+
+  <main class="grid view" id="view-sats" hidden>
+    <section class="card span-7" aria-labelledby="h-passes">
+      <div class="card-head">
+        <h2 id="h-passes">Passes over <span class="mono" id="satGrid"></span></h2>
+        <span class="meta" id="satMeta"></span>
+      </div>
+      <div class="filters">
+        <div class="chips" id="satTypeChips"></div>
+        <div class="filter-row">
+          <label>Minimum elevation
+            <select id="satMinEl"><option value="0">Any</option><option value="10">10°</option><option value="20">20°</option><option value="30">30°</option></select>
+          </label>
+        </div>
+      </div>
+      <div class="table-wrap tall">
+        <table class="data" id="passTable"></table>
+      </div>
+      <p class="note">Predicted from <a href="https://celestrak.org/" target="_blank" rel="noopener">CelesTrak</a> orbital elements. Satellite status changes often, so check <a href="https://www.amsat.org/status/" target="_blank" rel="noopener">AMSAT live status</a> before you transmit.</p>
+    </section>
+
+    <section class="card span-5" aria-labelledby="h-sky">
+      <div class="card-head">
+        <h2 id="h-sky">Sky track</h2>
+        <span class="meta" id="skyMeta"></span>
+      </div>
+      <div class="map-wrap local sky"><canvas id="skyPlot" aria-label="Sky plot of the selected pass"></canvas></div>
+      <div id="passDetail"></div>
+    </section>
+  </main>
+
   <main class="grid view" id="view-lookup" hidden>
     <section class="card span-12" aria-labelledby="h-lookup">
       <div class="card-head">
@@ -278,6 +345,8 @@
     <a href="https://pskreporter.info/" target="_blank" rel="noopener">PSKReporter</a> ·
     <a href="https://hearham.com/" target="_blank" rel="noopener">HearHam</a> ·
     <a href="https://www.aprs2.net/" target="_blank" rel="noopener">APRS-IS</a> ·
+    <a href="https://pota.app/" target="_blank" rel="noopener">POTA</a> ·
+    <a href="https://celestrak.org/" target="_blank" rel="noopener">CelesTrak</a> ·
     <a href="https://www.qrz.com/" target="_blank" rel="noopener">QRZ</a> ·
     <a href="https://callook.info/" target="_blank" rel="noopener">callook.info</a> ·
     DX cluster <span id="clusterHost"></span>
@@ -311,6 +380,7 @@
     </form>
   </dialog>
 
+  <script src="hamcore.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

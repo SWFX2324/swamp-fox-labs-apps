@@ -1,8 +1,10 @@
 # Ham Radio Dashboard
 
 A read-only propagation, space-weather and station-lookup dashboard for amateur radio
-operators. It adds a **Ham Radio** panel to the Home Assistant sidebar, with four
-tabs: **Space weather**, **Repeaters**, **APRS** and **Callsign lookup**.
+operators. It adds a **Ham Radio** panel to the Home Assistant sidebar, with six
+tabs: **Space weather**, **Repeaters**, **APRS**, **POTA**, **Satellites** and
+**Callsign lookup**. It also publishes its data to Home Assistant as sensors and
+fires events you can use in automations (see [Home Assistant sensors and alerts](#home-assistant-sensors-and-alerts)).
 
 ## Space weather
 
@@ -65,6 +67,37 @@ square.
 Stations are dropped after 3 hours without a packet. The feed follows the add-on's
 grid square; changing the grid in a browser moves the map but not the feed.
 
+## POTA
+
+Parks on the Air activators on the air right now, from [pota.app](https://pota.app/).
+
+- A world map with the live gray line, colored by mode (CW, phone, digital).
+  Activators who've gone QRT show hollow.
+- A list with frequency, band, mode, park, distance and direction, filterable by
+  band, mode and distance, and sortable by newest or nearest. Park references link
+  to the park's pota.app page, and callsigns open a lookup.
+
+Spots refresh every minute while the tab is open. SOTA isn't included: the SOTA API
+only allows approved applications.
+
+## Satellites
+
+Pass predictions for your grid square over the next 24 hours, for popular FM and
+linear amateur satellites: ISS, SO-50, PO-101, AO-91, RS-44, FO-29 and AO-7.
+
+- A list of upcoming passes with rise time, countdown, maximum elevation, direction
+  and duration, filterable by FM/linear and minimum elevation. Passes in progress
+  are marked **Up now**.
+- A sky plot of the selected pass (the centre is straight up, the edge is the
+  horizon) with rise, highest point, set and the satellite's current position.
+- Doppler-corrected downlink and uplink frequencies at rise, highest point and set.
+  For linear birds it shows the shift at the centre of the passband.
+
+Orbits come from [CelesTrak](https://celestrak.org/) (downloaded twice a day) and
+are computed with SGP4 using [satellite.js](https://github.com/shashwatak/satellite-js).
+Satellites go on and off the air often, so check
+[AMSAT live status](https://www.amsat.org/status/) before you transmit.
+
 ## Callsign lookup
 
 Type a callsign, or click any callsign in the DX spots, PSKReporter or repeater
@@ -93,11 +126,106 @@ Each callsign is cached for a day so repeated lookups don't hit QRZ again.
 | `qrz_username` / `qrz_password` | Optional. Your QRZ.com login, for worldwide callsign lookups. The password is only sent to QRZ and is never shown in the dashboard or logs. |
 | `aprs_enabled` | Keep a receive-only APRS-IS connection for the APRS tab. Needs `callsign` and `grid`. |
 | `aprs_radius` | How far around your grid to receive APRS stations, in your distance units (10–300, default 100). |
+| `ha_sensors` | Publish `sensor.ham_*` and `binary_sensor.ham_*` entities and fire `ham_dashboard_*` events. On by default. |
+| `spot_watch` | Callsigns or prefixes to watch on the DX cluster, e.g. `VP8PJ` or `3Y0`. Matches are highlighted in the spots table and fire a `ham_dashboard_dx_spot` event. |
+| `pota_alert_radius` | Fire a `ham_dashboard_pota_spot` event for new POTA activations within this distance, in your units. `0` turns POTA alerts off. Default 100. |
 
 `callsign`, `grid` and `distance_units` are the defaults for everyone who opens the
 panel. Each person can also click the callsign/grid chip at the top right and enter
 their own. That choice is saved in their browser only, so several operators can
 share one Home Assistant. The QRZ login is shared by everyone using the panel.
+
+## Home Assistant sensors and alerts
+
+With `ha_sensors` on, the add-on updates these entities every 5 minutes, using the
+add-on's `grid` for anything location-based:
+
+| Entity | State |
+| --- | --- |
+| `sensor.ham_solar_flux`, `sensor.ham_sunspot_number`, `sensor.ham_a_index`, `sensor.ham_k_index` | Solar and geomagnetic indices |
+| `sensor.ham_xray_flux`, `sensor.ham_solar_wind_speed`, `sensor.ham_bz`, `sensor.ham_noise_floor` | X-ray class, solar wind (km/s), Bz (nT), noise estimate |
+| `sensor.ham_noaa_r_scale`, `sensor.ham_noaa_s_scale`, `sensor.ham_noaa_g_scale` | NOAA scale level, 0–5 |
+| `binary_sensor.ham_radio_blackout` | On at R1 or higher |
+| `binary_sensor.ham_geomagnetic_storm` | On at G1 or higher, or Kp 5+ |
+| `sensor.ham_local_muf` | MUF from the nearest ionosonde (MHz) |
+| `sensor.ham_band_80m` … `sensor.ham_band_6m` | `Good`, `Fair`, `Poor` or `Closed` at your QTH, with HamQSL day/night ratings as attributes |
+| `sensor.ham_next_pass_iss`, `sensor.ham_next_pass_so_50`, … | Rise time of each satellite's next pass of 10° or more, with elevation, azimuths and frequencies as attributes |
+| `sensor.ham_next_good_pass` | The next pass of any satellite reaching 30° or more |
+| `sensor.ham_pota_nearby` | Number of POTA activators within your POTA alert radius, with the closest ten as an attribute |
+
+It also fires events:
+
+- `ham_dashboard_dx_spot` when a DX cluster spot matches your `spot_watch` list
+  (`dx`, `frequency_khz`, `band`, `mode`, `spotter`, `comment`, `watch`).
+- `ham_dashboard_pota_spot` when a new POTA activation appears within
+  `pota_alert_radius` (`activator`, `reference`, `park`, `frequency_khz`, `band`,
+  `mode`, `distance_km`, `bearing`).
+
+Each alert fires at most once every 30 minutes per station and band.
+
+These entities are created through Home Assistant's API, so they can't be renamed
+in the UI, and they show as unavailable for a few minutes after Home Assistant
+restarts until the next update.
+
+### Example automations
+
+Replace `notify.mobile_app_your_phone` with your own notify service.
+
+```yaml
+- alias: "10m is open"
+  triggers:
+    - trigger: state
+      entity_id: sensor.ham_band_10m
+      to: ["Good", "Fair"]
+  actions:
+    - action: notify.mobile_app_your_phone
+      data:
+        message: "10m is {{ trigger.to_state.state }} (MUF {{ states('sensor.ham_local_muf') }} MHz)"
+
+- alias: "Geomagnetic storm"
+  triggers:
+    - trigger: state
+      entity_id: binary_sensor.ham_geomagnetic_storm
+      to: "on"
+  actions:
+    - action: notify.mobile_app_your_phone
+      data:
+        message: "Geomagnetic storm {{ state_attr('binary_sensor.ham_geomagnetic_storm', 'level') }}, Kp {{ states('sensor.ham_k_index') }}"
+
+- alias: "POTA activator nearby"
+  triggers:
+    - trigger: event
+      event_type: ham_dashboard_pota_spot
+  actions:
+    - action: notify.mobile_app_your_phone
+      data:
+        message: >
+          {{ trigger.event.data.activator }} at {{ trigger.event.data.reference }}
+          ({{ trigger.event.data.park }}) on {{ trigger.event.data.frequency_khz }} kHz
+          {{ trigger.event.data.mode }}
+
+- alias: "Watched DX spotted"
+  triggers:
+    - trigger: event
+      event_type: ham_dashboard_dx_spot
+  actions:
+    - action: notify.mobile_app_your_phone
+      data:
+        message: "{{ trigger.event.data.dx }} on {{ trigger.event.data.frequency_khz }} kHz {{ trigger.event.data.mode }}"
+
+- alias: "Good satellite pass in 10 minutes"
+  triggers:
+    - trigger: template
+      value_template: >
+        {{ as_timestamp(states('sensor.ham_next_good_pass'), 0) - as_timestamp(now()) < 600
+           and as_timestamp(states('sensor.ham_next_good_pass'), 0) > as_timestamp(now()) }}
+  actions:
+    - action: notify.mobile_app_your_phone
+      data:
+        message: >
+          {{ state_attr('sensor.ham_next_good_pass', 'satellite') }} rises in 10 minutes,
+          max {{ state_attr('sensor.ham_next_good_pass', 'max_elevation') | round }}°
+```
 
 ## Data sources
 
@@ -110,6 +238,8 @@ share one Home Assistant. The QRZ login is shared by everyone using the panel.
   FCC data (cached a day per callsign, fetched only when you look a call up)
 - DX cluster via telnet (live)
 - [APRS-IS](https://www.aprs2.net/) via `rotate.aprs2.net:14580`, receive-only (live)
+- [POTA](https://pota.app/) activator spots (cached 1 min; polled every 2 min for alerts)
+- [CelesTrak](https://celestrak.org/) amateur satellite elements (cached 12 h)
 
 The add-on caches everything server-side, so opening the dashboard on several
 devices doesn't multiply the requests to these free services.
