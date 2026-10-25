@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.1
+
+- Fix: Home Assistant sensors and alerts didn't start. The add-on now finds its
+  Supervisor token in s6-overlay's saved container environment, where the base
+  image keeps it, instead of only looking in its own environment.
+
 ## 0.4.0
 
 - **Home Assistant sensors**: solar and geomagnetic indices, NOAA R/S/G scales,

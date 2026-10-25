@@ -1,10 +1,27 @@
 'use strict';
 // Publishes dashboard data to Home Assistant as entities and fires events,
 // through the Supervisor's proxy to the Core REST API. Active only when the
-// add-on runs under Supervisor (SUPERVISOR_TOKEN is set). HA_API_URL can point
-// at a mock server for local testing.
+// add-on runs under Supervisor (it has a Supervisor token). HA_API_URL can
+// point at a mock server for local testing.
 
-const TOKEN = process.env.SUPERVISOR_TOKEN || '';
+const fs = require('fs');
+
+// s6-overlay starts the app with a cleaned environment, so the token Supervisor
+// gives the container is often only in s6's saved copy of the environment.
+function supervisorToken() {
+  if (process.env.SUPERVISOR_TOKEN) return process.env.SUPERVISOR_TOKEN;
+  for (const dir of ['/run/s6/container_environment', '/var/run/s6/container_environment']) {
+    for (const name of ['SUPERVISOR_TOKEN', 'HASSIO_TOKEN']) {
+      try {
+        const token = fs.readFileSync(`${dir}/${name}`, 'utf8').trim();
+        if (token) return token;
+      } catch { /* not there */ }
+    }
+  }
+  return process.env.HASSIO_TOKEN || '';
+}
+
+const TOKEN = supervisorToken();
 const BASE = process.env.HA_API_URL || 'http://supervisor/core/api';
 const ATTRIBUTION = 'Ham Radio Dashboard (Swamp Fox Labs)';
 const REPUBLISH_MS = 30 * 60_000;
