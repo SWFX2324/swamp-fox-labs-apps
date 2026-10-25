@@ -141,6 +141,7 @@ Each callsign is cached for a day so repeated lookups don't hit QRZ again.
 | `aprs_enabled` | Keep a receive-only APRS-IS connection for the APRS tab. Needs `callsign` and `grid`. |
 | `aprs_radius` | How far around your grid to receive APRS stations, in your distance units (10–300, default 100). |
 | `ha_sensors` | Publish `sensor.ham_*` and `binary_sensor.ham_*` entities and fire `ham_dashboard_*` events. On by default. |
+| `ha_mqtt` | When the Mosquitto broker app is installed, create the entities through MQTT discovery under a **Ham Radio** device. On by default. See [MQTT or REST](#mqtt-or-rest). |
 | `spot_watch` | Callsigns or prefixes to watch on the DX cluster, e.g. `VP8PJ` or `3Y0`. Matches are highlighted in the spots table and fire a `ham_dashboard_dx_spot` event. |
 | `pota_alert_radius` | Fire a `ham_dashboard_pota_spot` event for new POTA activations within this distance, in your units. `0` turns POTA alerts off. Default 100. |
 | `nws_alerts` | Use National Weather Service alerts and the hourly forecast for storm safety (US only). On by default. |
@@ -186,9 +187,26 @@ It also fires events:
 
 DX and POTA alerts fire at most once every 30 minutes per station and band.
 
-These entities are created through Home Assistant's API, so they can't be renamed
-in the UI, and they show as unavailable for a few minutes after Home Assistant
-restarts until the next update.
+### MQTT or REST
+
+How the entities are created depends on whether the **Mosquitto broker** app is
+installed:
+
+- **With Mosquitto (recommended):** the add-on finds the broker automatically and
+  registers the entities through MQTT discovery, grouped under one **Ham Radio**
+  device in **Settings → Devices & services → MQTT**. You can rename them, put them
+  in areas and hide the ones you don't use. Their last values are kept on the
+  broker, so they're available as soon as Home Assistant restarts, and they show
+  as unavailable if the add-on stops. No broker settings are needed.
+- **Without Mosquitto:** the entities are created through Home Assistant's REST
+  API. They work the same in automations, but they can't be renamed in the UI and
+  show as unavailable for a few minutes after Home Assistant restarts, until the
+  next update.
+
+The entity IDs are the same either way, so automations keep working if you switch.
+When you install Mosquitto later, restart this add-on: it clears the old REST
+entities and registers the MQTT ones in their place. Turning `ha_mqtt` off removes
+the MQTT device again. Events (`ham_dashboard_*`) always go through the REST API.
 
 ### Example automations
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.6.0
+
+- **MQTT entities**: when the Mosquitto broker app is installed, the sensors are
+  registered through MQTT discovery under one **Ham Radio** device. They can be
+  renamed, assigned to areas and hidden, keep their values across Home Assistant
+  restarts, and show as unavailable when the add-on stops. Broker settings come
+  from Supervisor automatically. Without Mosquitto, the REST API is used as before.
+  Switching clears the old entities so entity IDs stay the same. New `ha_mqtt`
+  option (on by default).
+- The add-on now backs off for 15 minutes when a data source answers "too many
+  requests" (HTTP 429), instead of retrying every minute.
+- Build: the base image is now set in the Dockerfile and `build.yaml` is gone,
+  as Supervisor 2026.04 and later require.
+
 ## 0.5.0
 
 - **Measured band activity**: the band table has a new "Heard nearby" column

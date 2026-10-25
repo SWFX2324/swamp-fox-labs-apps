@@ -32,6 +32,9 @@ configuration:
   ha_sensors:
     name: Home Assistant sensors
     description: Publish solar, band, satellite and POTA data as sensor.ham_* and binary_sensor.ham_* entities, and fire ham_dashboard_* events for alerts.
+  ha_mqtt:
+    name: Use MQTT for entities
+    description: When the Mosquitto broker app is installed, register the sensors through MQTT discovery under a "Ham Radio" device, so they can be renamed and keep their values when Home Assistant restarts. Without a broker, sensors are created through the REST API.
   spot_watch:
     name: DX spot watch list
     description: Callsigns or prefixes to watch on the DX cluster (e.g. VP8PJ or 3Y0). A match fires a ham_dashboard_dx_spot event you can use in automations.

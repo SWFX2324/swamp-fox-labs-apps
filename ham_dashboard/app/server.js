@@ -15,7 +15,7 @@ const SATS = require('./sats');
 const PORT = +(process.env.PORT || 8099);
 const STATIC_DIR = path.join(__dirname, 'static');
 const SWPC = 'https://services.swpc.noaa.gov';
-const UA = 'SwampFoxLabs-HamRadioDashboard/0.5 (Home Assistant app; github.com/SWFX2324/swamp-fox-labs-apps)';
+const UA = 'SwampFoxLabs-HamRadioDashboard/0.6 (Home Assistant app; github.com/SWFX2324/swamp-fox-labs-apps)';
 
 // ---------------------------------------------------------------- options
 
@@ -35,6 +35,7 @@ function loadOptions() {
     aprs_enabled: String(env.APRS ?? o.aprs_enabled ?? true) !== 'false',
     aprs_radius: +(env.APRS_RADIUS ?? o.aprs_radius ?? 100),
     ha_sensors: String(env.HA_SENSORS ?? o.ha_sensors ?? true) !== 'false',
+    ha_mqtt: String(env.HA_MQTT ?? o.ha_mqtt ?? true) !== 'false',
     spot_watch: (env.SPOT_WATCH !== undefined ? env.SPOT_WATCH.split(',') : o.spot_watch || [])
       .map(s => String(s).trim().toUpperCase()).filter(Boolean),
     pota_alert_radius: +(env.POTA_RADIUS ?? o.pota_alert_radius ?? 100),
@@ -48,19 +49,27 @@ const options = loadOptions();
 // ---------------------------------------------------------------- cache / fetch
 
 const cache = new Map();
+const blockedUntil = new Map(); // key -> time before which we don't retry
 
 // Returns the cached value while fresh; refetches once (shared in-flight promise)
 // when stale; on failure keeps serving the stale value and retries in a minute.
+// A source that answers 429 (too many requests) isn't asked again for 15 minutes.
 function cached(key, ttlMs, fn) {
   const hit = cache.get(key);
   if (hit && 'v' in hit && Date.now() - hit.t < ttlMs) return Promise.resolve(hit.v);
   if (hit && hit.p) return hit.p;
+  if (blockedUntil.get(key) > Date.now()) {
+    if (hit && 'v' in hit) return Promise.resolve(hit.v);
+    return Promise.reject(new Error(`${key}: rate limited by the source, retrying later`));
+  }
   const p = fn()
-    .then(v => { cache.set(key, { t: Date.now(), v }); return v; })
+    .then(v => { cache.set(key, { t: Date.now(), v }); blockedUntil.delete(key); return v; })
     .catch(err => {
+      const wait = err.status === 429 ? 15 * MIN : MIN;
+      if (err.status === 429) blockedUntil.set(key, Date.now() + wait);
       if (hit && 'v' in hit) {
         console.warn(`[cache] ${key}: ${err.message} (serving stale)`);
-        cache.set(key, { t: Date.now() - ttlMs + 60_000, v: hit.v });
+        cache.set(key, { t: Date.now() - ttlMs + wait, v: hit.v });
         return hit.v;
       }
       cache.delete(key);
@@ -72,7 +81,11 @@ function cached(key, ttlMs, fn) {
 
 async function get(url, type = 'json') {
   const r = await fetch(url, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(20_000) });
-  if (!r.ok) throw new Error(`${url} -> HTTP ${r.status}`);
+  if (!r.ok) {
+    const err = new Error(`${url.split('?')[0]} -> HTTP ${r.status}`);
+    err.status = r.status;
+    throw err;
+  }
   return type === 'json' ? r.json() : r.text();
 }
 
@@ -388,7 +401,7 @@ class Cluster {
 }
 
 const cluster = new Cluster();
-const aprs = new AprsIs({ userAgent: 'SwampFoxLabsHamDash 0.5' });
+const aprs = new AprsIs({ userAgent: 'SwampFoxLabsHamDash 0.6' });
 const ha = new HomeAssistant();
 
 // A spot matches the watch list if the DX call equals an entry or starts with
@@ -1031,8 +1044,8 @@ http.createServer(async (req, res) => {
     center: gridToLatLon(options.grid),
     radiusKm: Math.min(Math.max(options.aprs_radius, 10), 300) * (options.distance_units === 'mi' ? 1.609344 : 1),
   });
-  ha.start(options.ha_sensors);
-  if (ha.enabled) {
+  ha.start({ enabled: options.ha_sensors, mqtt: options.ha_mqtt }).then(() => {
+    if (!ha.enabled) return;
     console.log('[ha] publishing sensors to Home Assistant');
     setTimeout(publishHa, 20_000);
     setInterval(publishHa, 5 * MIN);
@@ -1040,5 +1053,5 @@ http.createServer(async (req, res) => {
     setInterval(checkPotaAlerts, 2 * MIN);
     setTimeout(publishStorm, 15_000);
     setInterval(publishStorm, MIN);
-  }
+  });
 });

@@ -23,7 +23,7 @@ and dark mode.
 - **POTA** tab: Parks on the Air activators on a world map and in a filterable list
 - **Satellites** tab: pass predictions with a sky plot and Doppler-corrected
   frequencies for ISS, SO-50, RS-44 and more
-- **Home Assistant sensors and alerts**: band conditions, space weather, satellite
+- **Home Assistant sensors and alerts** (as an MQTT device when Mosquitto is installed): band conditions, space weather, satellite
   passes and POTA activity as entities, plus events for watched DX and nearby POTA
   activations
 - **Callsign lookup** tab: QRZ.com (with your own login) or free FCC data for US

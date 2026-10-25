@@ -1,5 +1,5 @@
 name: Ham Radio Dashboard
-version: "0.5.0"
+version: "0.6.0"
 slug: ham_dashboard
 description: Band conditions, space weather, MUF maps and DX spots for amateur radio operators
 url: https://github.com/SWFX2324/swamp-fox-labs-apps/tree/main/ham_dashboard
@@ -12,6 +12,8 @@ boot: auto
 ingress: true
 ingress_port: 8099
 homeassistant_api: true
+services:
+  - mqtt:want
 panel_icon: mdi:radio-tower
 panel_title: Ham Radio
 options:
@@ -26,6 +28,7 @@ options:
   aprs_enabled: true
   aprs_radius: 100
   ha_sensors: true
+  ha_mqtt: true
   spot_watch: []
   pota_alert_radius: 100
   nws_alerts: true
@@ -43,6 +46,7 @@ schema:
   aprs_enabled: bool
   aprs_radius: int(10,300)
   ha_sensors: bool
+  ha_mqtt: bool
   spot_watch:
     - str
   pota_alert_radius: int(0,5000)
