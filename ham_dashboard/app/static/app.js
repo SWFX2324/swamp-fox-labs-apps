@@ -187,6 +187,13 @@
 
   // ------------------------------------------------------------ bands
 
+  function activityCell(a) {
+    if (!a) return '<span class="meta">—</span>';
+    if (!a.stations) return '<span class="meta">0</span>';
+    const title = a.farthest ? `Farthest: ${a.farthest.call} (${a.farthest.country || a.farthest.grid}), ${fmtDist(a.farthest.km)}` : '';
+    return `<span class="mono" title="${esc(title)}">${a.stations}</span><div class="sub">${a.dx ? `${a.dx} DX` : 'local'}${a.farthest ? ` · ${fmtDist(a.farthest.km)}` : ''}</div>`;
+  }
+
   function renderBands() {
     const h = state.solar?.hamqsl;
     const pos = gridToLatLon(station().grid);
@@ -196,29 +203,35 @@
     const kp = currentKp();
     const groups = Object.fromEntries((h?.bands || []).map(b => [b.name, b]));
 
+    const act = state.activity;
     const head = `<thead><tr><th>Band</th><th class="freq">MHz</th>
       <th>At your QTH now<small>${iono ? `MUF ${iono.mufd.toFixed(1)} MHz` : pos ? 'no nearby ionosonde' : 'set grid'}</small></th>
-      <th class="${isDay ? 'now' : ''}">HamQSL day${isDay ? '<small>now</small>' : '<small>&nbsp;</small>'}</th>
-      <th class="${!isDay ? 'now' : ''}">HamQSL night${!isDay ? '<small>now</small>' : '<small>&nbsp;</small>'}</th></tr></thead>`;
+      <th class="num">Heard nearby<small>last ${act?.windowMin ?? 15} min</small></th>
+      <th class="${isDay ? 'now' : 'hide-sm'}">HamQSL day${isDay ? '<small>now</small>' : '<small>&nbsp;</small>'}</th>
+      <th class="${!isDay ? 'now' : 'hide-sm'}">HamQSL night${!isDay ? '<small>now</small>' : '<small>&nbsp;</small>'}</th></tr></thead>`;
     const body = HF_BANDS.map(([name, mhz, group]) => {
       const g = groups[group];
       const r = iono ? rateBand(mhz, iono.mufd, sunAlt ?? 0, kp ?? 0) : null;
       const why = iono ? `${mhz} MHz vs MUF ${iono.mufd.toFixed(1)} MHz${name === '6m' && r === 'closed' ? ' (sporadic-E can still open 6m)' : ''}` : '';
       return `<tr><td class="band">${name}</td><td class="freq">${mhz}</td>
         <td>${ratingPill(r, why)}</td>
-        <td class="${isDay ? '' : 'dim'}">${g ? hamqslPill(g.day) : '<span class="meta">—</span>'}</td>
-        <td class="${!isDay ? '' : 'dim'}">${g ? hamqslPill(g.night) : '<span class="meta">—</span>'}</td></tr>`;
+        <td class="num">${activityCell(act?.bands?.[name])}</td>
+        <td class="${isDay ? '' : 'dim hide-sm'}">${g ? hamqslPill(g.day) : '<span class="meta">—</span>'}</td>
+        <td class="${!isDay ? '' : 'dim hide-sm'}">${g ? hamqslPill(g.night) : '<span class="meta">—</span>'}</td></tr>`;
     }).join('');
     $('#bandsTable').innerHTML = head + `<tbody>${body}</tbody>`;
     $('#bandsMeta').textContent = sunAlt == null ? '' : `Sun ${sunAlt >= 0 ? 'up' : 'down'} at QTH (${sunAlt.toFixed(0)}°)`;
 
     let note = 'HamQSL ratings are N0NBH’s global estimates for band pairs. ';
     if (iono) {
-      note += `“At your QTH” is an estimate from the ${iono.name} ionosonde (${fmtDist(iono.dist)} away, measured ${ago(iono.time)}), with daytime absorption and the current Kp of ${kp ?? '?'} factored in.`;
+      note += `“At your QTH” is an estimate from the ${iono.name} ionosonde (${fmtDist(iono.dist)} away, measured ${ago(iono.time)}), with daytime absorption and the current Kp of ${kp ?? '?'} factored in. `;
     } else if (pos) {
-      note += 'No ionosonde within 3000 km has reported in the last 3 hours, so the local estimate is unavailable.';
+      note += 'No ionosonde within 3000 km has reported in the last 3 hours, so the local estimate is unavailable. ';
     } else {
-      note += 'Set your grid square for a local estimate.';
+      note += 'Set your grid square for a local estimate. ';
+    }
+    if (act) {
+      note += `“Heard nearby” is measured: distinct stations that PSKReporter monitors within ${fmtDist(act.radiusKm)} of you decoded in the last ${act.windowMin} minutes (mostly FT8/FT4), with how many were DX (over ${fmtDist(act.dxKm)} away). Zero can also mean nobody nearby is listening on that band.`;
     }
     $('#bandsNote').textContent = note;
 
@@ -754,6 +767,63 @@
       }).join('');
     }
     $('#forecastText').textContent = state.solar?.forecast || 'Unavailable';
+  }
+
+  // ------------------------------------------------------------ storm safety
+
+  const STORM_LEVEL = {
+    safe: { cls: 'good', label: 'Safe', icon: '✓', text: 'No lightning or storm warnings for your station.' },
+    caution: { cls: 'fair', label: 'Caution', icon: '!', text: 'Storms possible. Be ready to disconnect antennas.' },
+    danger: { cls: 'poor', label: 'Danger', icon: '⚡', text: 'Disconnect and ground your antennas now.' },
+  };
+
+  async function loadStorm() {
+    try { state.storm = await api('api/storm'); } catch (e) { console.warn(e); }
+    renderStorm();
+  }
+
+  function renderStorm() {
+    const s = state.storm;
+    if (!s) return;
+    const lv = STORM_LEVEL[s.level] || STORM_LEVEL.safe;
+
+    const banner = $('#stormBanner');
+    banner.hidden = s.level !== 'danger';
+    if (s.level === 'danger') banner.innerHTML = `<b>⚡ Lightning danger:</b> ${esc(s.reasons.join(' · '))}. ${esc(lv.text)}`;
+
+    $('#stormMeta').textContent = `Checked ${ago(s.updated)}`;
+    $('#stormStatus').innerHTML = `
+      <div class="storm-level s-${lv.cls}"><span class="storm-icon" aria-hidden="true">${lv.icon}</span>${esc(lv.label)}</div>
+      <p class="storm-text">${esc(s.reasons.length ? s.reasons.join(' · ') : lv.text)}</p>
+      ${s.reasons.length ? `<p class="note">${esc(lv.text)}</p>` : ''}`;
+
+    const sen = s.sensor;
+    $('#stormSensor').innerHTML = !sen
+      ? `<div class="tile"><span class="label">Lightning sensor</span><span class="value small">Not set up</span>
+          <span class="sub wrap">Add an Ecowitt WH57, Ambient Weather or ESPHome AS3935 sensor to Home Assistant, then put its entity ID in the add-on’s <b>Lightning sensor entity</b> option to get strike distances.</span></div>`
+      : sen.error
+        ? `<div class="tile"><span class="label">Lightning sensor</span><span class="value small">Unavailable</span><span class="sub wrap">${esc(sen.entity)}: ${esc(sen.error)}</span></div>`
+        : `<div class="tile"><span class="label">Last strike · ${esc(sen.name)}</span>
+            <span class="value">${sen.distance ?? '—'}<span class="unit">${esc(s.units)}</span></span>
+            <span class="sub">${sen.lastStrike ? `${ago(sen.lastStrike)}${sen.recent ? '' : ' (older than 30 min)'}` : 'No strikes yet'} · alert inside ${s.alertDistance} ${esc(s.units)}</span></div>`;
+
+    const hours = s.nws?.hourly || [];
+    $('#stormForecast').innerHTML = !s.nws
+      ? `<div class="tile"><span class="label">NWS forecast</span><span class="value small">Off</span><span class="sub wrap">Turn on NWS weather alerts in the add-on options (US only).</span></div>`
+      : !hours.length
+        ? `<div class="tile"><span class="label">NWS forecast</span><span class="value small">Unavailable</span><span class="sub wrap">The National Weather Service only covers the US.</span></div>`
+        : `<div class="tile"><span class="label">Next 12 hours · thunder ${hours.some(h => /thunder/i.test(h.forecast)) ? 'in forecast' : 'not expected'}</span>
+            <div class="hour-strip">${hours.map(h => {
+              const t = /thunder/i.test(h.forecast);
+              return `<span class="hour${t ? ' thunder' : ''}" title="${esc(h.forecast)}${h.pop != null ? ` · ${h.pop}% rain` : ''}">${esc(new Date(h.start).toLocaleTimeString([], { hour: 'numeric' }))}${t ? ' ⚡' : ''}</span>`;
+            }).join('')}</div></div>`;
+
+    const alerts = s.nws?.alerts || [];
+    $('#nwsAlerts').innerHTML = !s.nws ? ''
+      : !s.nws.available ? '<p class="note">NWS alerts are unavailable right now.</p>'
+        : !alerts.length ? '<p class="note">No active National Weather Service alerts for your location.</p>'
+          : alerts.map(a => `<details><summary>${pill(a.storm === 'danger' ? 'poor' : a.storm === 'caution' ? 'fair' : 'none', a.event)}<span>${esc(a.headline)}</span></summary>
+              <pre>${esc([a.description, a.instruction].filter(Boolean).join('\n\n'))}</pre></details>`).join('');
   }
 
   // ------------------------------------------------------------ views
@@ -1735,6 +1805,9 @@
     loadPsk();
     fillRadiusOptions();
     fillPotaRanges();
+    state.activity = null;
+    loadActivity();
+    renderStorm();
     rpt.key = '';
     rpt.pos = null;
     if (currentView === 'repeaters') loadRepeaters();
@@ -1750,6 +1823,11 @@
       state.solar = await api('api/solar');
       renderTiles(); renderScales(); renderBands(); renderKp(); renderAlerts();
     } catch (e) { console.warn(e); }
+  }
+  async function loadActivity() {
+    const pos = gridToLatLon(station().grid);
+    if (!pos) return;
+    try { state.activity = await api(`api/activity?lat=${pos.lat.toFixed(4)}&lon=${pos.lon.toFixed(4)}`); renderBands(); } catch (e) { console.warn(e); }
   }
   async function loadIono() {
     try { state.iono = await api('api/ionosondes'); renderBands(); drawGrayline(); } catch (e) { console.warn(e); }
@@ -1901,12 +1979,14 @@
     showView(location.hash.slice(1) || storeGet('hamdash.view') || 'weather');
     if (!station().callsign && !station().grid) openSettings();
 
-    loadLand(); loadSolar(); loadIono(); loadSpots(); loadPsk(); loadCycle();
+    loadLand(); loadSolar(); loadIono(); loadSpots(); loadPsk(); loadCycle(); loadActivity(); loadStorm();
     setInterval(loadSolar, 5 * 60000);
     setInterval(loadIono, 10 * 60000);
     setInterval(loadSpots, 30000);
     setInterval(loadPsk, 5 * 60000);
     setInterval(loadCycle, 12 * 3600000);
+    setInterval(loadActivity, 5 * 60000);
+    setInterval(loadStorm, 60000);
     setInterval(() => { if (currentView === 'weather' && !$('#panel-grayline').hidden) drawGrayline(); renderBands(); }, 60000);
 
     // Redraw canvases and charts only when the width changes, not on every

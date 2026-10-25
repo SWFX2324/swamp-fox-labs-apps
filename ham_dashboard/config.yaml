@@ -1,5 +1,5 @@
 name: Ham Radio Dashboard
-version: "0.4.1"
+version: "0.5.0"
 slug: ham_dashboard
 description: Band conditions, space weather, MUF maps and DX spots for amateur radio operators
 url: https://github.com/SWFX2324/swamp-fox-labs-apps/tree/main/ham_dashboard
@@ -28,6 +28,9 @@ options:
   ha_sensors: true
   spot_watch: []
   pota_alert_radius: 100
+  nws_alerts: true
+  lightning_entity: ""
+  lightning_alert_distance: 15
 schema:
   callsign: "match(^[A-Za-z0-9/]{0,15}$)"
   grid: "match(^([A-Ra-r]{2}[0-9]{2}([A-Xa-x]{2})?)?$)"
@@ -43,3 +46,6 @@ schema:
   spot_watch:
     - str
   pota_alert_radius: int(0,5000)
+  nws_alerts: bool
+  lightning_entity: "str?"
+  lightning_alert_distance: int(1,100)

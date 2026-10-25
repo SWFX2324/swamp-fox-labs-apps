@@ -64,6 +64,18 @@ class HomeAssistant {
     this.sent.set(entityId, { key, at: Date.now() });
   }
 
+  // Read another entity's state (e.g. a lightning sensor). null if it doesn't exist.
+  async getState(entityId) {
+    if (!this.available) return null;
+    const r = await fetch(`${BASE}/states/${encodeURIComponent(entityId)}`, {
+      headers: { Authorization: `Bearer ${TOKEN}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (r.status === 404) return null;
+    if (!r.ok) throw new Error(`Home Assistant /states/${entityId} returned HTTP ${r.status}`);
+    return r.json();
+  }
+
   async fireEvent(type, data) {
     if (!this.enabled) return;
     try {
@@ -74,7 +86,8 @@ class HomeAssistant {
     }
   }
 
-  // entities: [[entity_id, state, attributes], ...]. One failure doesn't stop the rest.
+  // entities: [[entity_id, state, attributes], ...]. One failure doesn't stop the
+  // rest. Several batches can publish independently; the count covers them all.
   async publish(entities) {
     if (!this.enabled) return;
     let ok = 0;
@@ -83,7 +96,7 @@ class HomeAssistant {
     }
     if (ok === entities.length) this.lastError = null;
     else console.warn(`[ha] published ${ok}/${entities.length} entities: ${this.lastError}`);
-    this.entities = ok;
+    this.entities = this.sent.size;
     this.lastPublish = new Date().toISOString();
   }
 

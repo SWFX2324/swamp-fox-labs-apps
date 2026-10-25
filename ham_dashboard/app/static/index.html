@@ -31,6 +31,7 @@
       <div><span class="clock-label">Local</span><span class="mono clock" id="clockLocal">--:--:--</span></div>
     </div>
   </header>
+  <div class="storm-banner" id="stormBanner" role="alert" hidden></div>
 
   <main class="grid view" id="view-weather">
     <!-- Space weather now -->
@@ -40,6 +41,20 @@
         <span class="meta" id="solarUpdated"></span>
       </div>
       <div class="tiles" id="tiles"></div>
+    </section>
+
+    <!-- Storm safety -->
+    <section class="card span-12" aria-labelledby="h-storm">
+      <div class="card-head">
+        <h2 id="h-storm">Station storm safety</h2>
+        <span class="meta" id="stormMeta"></span>
+      </div>
+      <div class="storm-grid">
+        <div id="stormStatus"></div>
+        <div id="stormSensor"></div>
+        <div id="stormForecast"></div>
+      </div>
+      <div class="alerts storm-alerts" id="nwsAlerts"></div>
     </section>
 
     <!-- NOAA scales -->

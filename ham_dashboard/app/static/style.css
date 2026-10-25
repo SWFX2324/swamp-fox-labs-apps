@@ -406,3 +406,37 @@ table.aprs-table td:last-child .sub { white-space: normal; max-width: 260px; }
   .views { flex-wrap: nowrap; }
   .el-bar { min-width: 26px; }
 }
+
+/* ------------------------------------------------------------ band activity, storm safety */
+.bands .sub { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.bands th.num, .bands td.num { text-align: right; }
+@media (max-width: 600px) {
+  .bands .hide-sm { display: none; }
+}
+.storm-banner {
+  position: relative;
+  padding: 10px 16px; font-size: 14px;
+  background: var(--critical); color: #fff;
+}
+.storm-grid { display: grid; grid-template-columns: minmax(200px, 1fr) minmax(220px, 1.2fr) minmax(260px, 1.6fr); gap: 12px; align-items: start; }
+@media (max-width: 900px) { .storm-grid { grid-template-columns: 1fr; } }
+.storm-level {
+  display: inline-flex; align-items: center; gap: 10px;
+  font-size: 22px; font-weight: 700; padding: 6px 14px 6px 8px; border-radius: 999px;
+  background: color-mix(in srgb, var(--c) 18%, transparent);
+}
+.storm-level.s-good { --c: var(--good); }
+.storm-level.s-fair { --c: var(--warning); }
+.storm-level.s-poor { --c: var(--critical); }
+.storm-icon {
+  display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%;
+  background: var(--c); color: #fff; font-size: 16px;
+}
+.storm-level.s-fair .storm-icon { color: #3a2a00; }
+.storm-text { margin: 10px 0 0; font-size: 14px; }
+.tile .value.small { font-size: 18px; }
+.tile .sub.wrap { white-space: normal; }
+.hour-strip { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.hour { font-size: 11px; font-family: var(--mono); padding: 2px 6px; border-radius: 5px; background: var(--card); color: var(--text-2); }
+.hour.thunder { background: color-mix(in srgb, var(--warning) 30%, transparent); color: var(--text); font-weight: 600; }
+.storm-alerts { margin-top: 12px; }

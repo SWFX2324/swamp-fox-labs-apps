@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.0
+
+- **Measured band activity**: the band table has a new "Heard nearby" column
+  showing how many stations PSKReporter monitors within about 500 miles decoded
+  on each band in the last 15 minutes, how many were DX, and the farthest. Also
+  published as `sensor.ham_activity_80m` … `sensor.ham_activity_6m`.
+- **Station storm safety**: Safe / Caution / Danger from National Weather Service
+  alerts and hourly forecast, plus an optional lightning sensor already in Home
+  Assistant (Ecowitt, Ambient, ESPHome AS3935). Danger shows a banner on every
+  tab, turns on `binary_sensor.ham_lightning_danger` and fires
+  `ham_dashboard_storm_danger`, so an automation can disconnect your antennas.
+- New `nws_alerts`, `lightning_entity` and `lightning_alert_distance` options.
+
 ## 0.4.1
 
 - Fix: Home Assistant sensors and alerts didn't start. The add-on now finds its

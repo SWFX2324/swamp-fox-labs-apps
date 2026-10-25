@@ -7,7 +7,10 @@ in its own Home Assistant sidebar panel. It works on phones and desktops, in lig
 and dark mode.
 
 - HF band conditions, 80 m – 6 m: N0NBH/HamQSL ratings plus a local estimate from
-  the nearest ionosonde
+  the nearest ionosonde, and measured activity heard nearby
+  from PSKReporter
+- Station storm safety from NWS alerts and an optional lightning sensor, with a
+  Home Assistant sensor that can disconnect your antennas
 - NOAA R/S/G scales, SFI, sunspot number, K/A index, X-ray flux, solar wind and Bz
 - Gray line map with sunrise, sunset and gray line times for your grid, plus the
   KC2G MUF and foF2 maps
@@ -31,7 +34,7 @@ your QRZ username and password there too if you want worldwide callsign lookups.
 See the **Documentation** tab for details.
 
 Data from N0NBH/HamQSL, NOAA SWPC, KC2G, PSKReporter, HearHam, APRS-IS, POTA,
-CelesTrak, QRZ.com, callook.info and the VE7CC DX cluster. The world outline comes
+CelesTrak, the National Weather Service, QRZ.com, callook.info and the VE7CC DX cluster. The world outline comes
 from [world-atlas](https://github.com/topojson/world-atlas) (Natural Earth, public
 domain).
 

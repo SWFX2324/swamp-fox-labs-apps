@@ -38,3 +38,12 @@ configuration:
   pota_alert_radius:
     name: POTA alert radius
     description: Fire a ham_dashboard_pota_spot event when a new POTA activation is spotted within this distance, in your distance units. 0 turns POTA alerts off.
+  nws_alerts:
+    name: NWS weather alerts
+    description: Check National Weather Service alerts and the hourly forecast for your grid square (US only) for storm safety.
+  lightning_entity:
+    name: Lightning sensor entity
+    description: Optional. A Home Assistant sensor whose state is the distance to the last lightning strike, e.g. from an Ecowitt WH57, Ambient Weather or ESPHome AS3935 sensor.
+  lightning_alert_distance:
+    name: Lightning alert distance
+    description: Turn on binary_sensor.ham_lightning_danger when the lightning sensor reports a strike within this distance (in your units) in the last 30 minutes.

@@ -15,7 +15,7 @@ const SATS = require('./sats');
 const PORT = +(process.env.PORT || 8099);
 const STATIC_DIR = path.join(__dirname, 'static');
 const SWPC = 'https://services.swpc.noaa.gov';
-const UA = 'SwampFoxLabs-HamRadioDashboard/0.3 (Home Assistant app; github.com/SWFX2324/swamp-fox-labs-apps)';
+const UA = 'SwampFoxLabs-HamRadioDashboard/0.5 (Home Assistant app; github.com/SWFX2324/swamp-fox-labs-apps)';
 
 // ---------------------------------------------------------------- options
 
@@ -38,6 +38,9 @@ function loadOptions() {
     spot_watch: (env.SPOT_WATCH !== undefined ? env.SPOT_WATCH.split(',') : o.spot_watch || [])
       .map(s => String(s).trim().toUpperCase()).filter(Boolean),
     pota_alert_radius: +(env.POTA_RADIUS ?? o.pota_alert_radius ?? 100),
+    nws_alerts: String(env.NWS_ALERTS ?? o.nws_alerts ?? true) !== 'false',
+    lightning_entity: String(env.LIGHTNING_ENTITY ?? o.lightning_entity ?? '').trim(),
+    lightning_alert_distance: +(env.LIGHTNING_DISTANCE ?? o.lightning_alert_distance ?? 15),
   };
 }
 const options = loadOptions();
@@ -385,7 +388,7 @@ class Cluster {
 }
 
 const cluster = new Cluster();
-const aprs = new AprsIs({ userAgent: 'SwampFoxLabsHamDash 0.4' });
+const aprs = new AprsIs({ userAgent: 'SwampFoxLabsHamDash 0.5' });
 const ha = new HomeAssistant();
 
 // A spot matches the watch list if the DX call equals an entry or starts with
@@ -471,6 +474,175 @@ function satelliteTles() {
 function satellitePasses(pos) {
   return cached(`sats-${pos.lat.toFixed(2)},${pos.lon.toFixed(2)}`, 10 * MIN, async () =>
     ({ computed: new Date().toISOString(), sats: SATS.predict(await satelliteTles(), pos, 24) }));
+}
+
+// ---------------------------------------------------------------- band activity (PSKReporter)
+
+// Measured propagation: what PSKReporter monitors near the QTH actually heard
+// in the last 15 minutes, per band. One area query per Maidenhead field every
+// 5 minutes, which is PSKReporter's requested maximum rate.
+const ACTIVITY_WINDOW_MIN = 15;
+const ACTIVITY_RADIUS_KM = 800;
+const DX_KM = 2500;
+
+function pskArea(field) {
+  return cached(`psk-area-${field}`, 5 * MIN, async () => {
+    const xml = await get(`https://retrieve.pskreporter.info/query?receiverCallsign=${field}&modify=grid&flowStartSeconds=-${ACTIVITY_WINDOW_MIN * 60}&rronly=1`, 'text');
+    const reports = [];
+    for (const m of xml.matchAll(/<receptionReport\s([^>]*?)\/>/g)) {
+      const a = {};
+      for (const x of m[1].matchAll(/(\w+)="([^"]*)"/g)) a[x[1]] = x[2];
+      reports.push({ rx: a.receiverCallsign, rxGrid: a.receiverLocator, tx: a.senderCallsign, txGrid: a.senderLocator, txCountry: a.senderDXCC, freq: num(a.frequency), mode: a.mode });
+    }
+    return { fetched: Date.now(), reports };
+  });
+}
+
+async function bandActivity(pos) {
+  const field = HamCore.latLonToGrid(pos.lat, pos.lon).slice(0, 2);
+  const { fetched, reports } = await pskArea(field);
+  const acc = Object.fromEntries(HamCore.HF_BANDS.map(([b]) => [b, { stations: new Set(), receivers: new Set(), dx: new Set(), reports: 0, farthest: null, modes: {} }]));
+  for (const r of reports) {
+    const b = acc[bandOf(r.freq / 1000)];
+    const rx = gridToLatLon(r.rxGrid);
+    if (!b || !rx || distanceKm(pos, rx) > ACTIVITY_RADIUS_KM) continue;
+    b.reports++;
+    b.stations.add(r.tx);
+    b.receivers.add(r.rx);
+    b.modes[r.mode] = (b.modes[r.mode] || 0) + 1;
+    const tx = gridToLatLon(r.txGrid);
+    if (!tx) continue;
+    const km = distanceKm(pos, tx);
+    if (km >= DX_KM) b.dx.add(r.tx);
+    if (!b.farthest || km > b.farthest.km) b.farthest = { call: r.tx, km: Math.round(km), grid: r.txGrid, country: r.txCountry || '' };
+  }
+  const bands = {};
+  for (const [k, b] of Object.entries(acc)) {
+    bands[k] = { stations: b.stations.size, receivers: b.receivers.size, dx: b.dx.size, reports: b.reports, farthest: b.farthest, modes: b.modes };
+  }
+  return { field, windowMin: ACTIVITY_WINDOW_MIN, radiusKm: ACTIVITY_RADIUS_KM, dxKm: DX_KM, fetched: new Date(fetched).toISOString(), bands };
+}
+
+// ---------------------------------------------------------------- storm safety (NWS + local lightning sensor)
+
+// NWS events that mean "lightning is here or imminent" vs "be ready".
+const STORM_DANGER = /^(Severe Thunderstorm Warning|Tornado Warning|Tornado Emergency|Extreme Wind Warning)$/i;
+const STORM_CAUTION = /^(Severe Thunderstorm Watch|Tornado Watch|Severe Weather Statement)$/i;
+
+function nwsAlerts(pos) {
+  return cached(`nws-alerts-${pos.lat.toFixed(3)},${pos.lon.toFixed(3)}`, 2 * MIN, async () => {
+    const d = await get(`https://api.weather.gov/alerts/active?point=${pos.lat.toFixed(4)},${pos.lon.toFixed(4)}`);
+    return (d.features || []).map(({ properties: p }) => {
+      const text = `${p.headline || ''} ${p.description || ''}`;
+      const storm = STORM_DANGER.test(p.event) ? 'danger'
+        : STORM_CAUTION.test(p.event) || (/Special Weather Statement/i.test(p.event) && /thunderstorm|lightning/i.test(text)) ? 'caution' : null;
+      return {
+        id: p.id, event: p.event, severity: p.severity, headline: p.headline || p.event,
+        onset: p.onset || p.effective, ends: p.ends || p.expires, area: p.areaDesc,
+        description: String(p.description || '').slice(0, 1500), instruction: String(p.instruction || '').slice(0, 800),
+        sender: p.senderName, storm,
+      };
+    });
+  });
+}
+
+function nwsHourly(pos) {
+  return cached(`nws-hourly-${pos.lat.toFixed(3)},${pos.lon.toFixed(3)}`, 30 * MIN, async () => {
+    const point = await cached(`nws-point-${pos.lat.toFixed(3)},${pos.lon.toFixed(3)}`, DAY,
+      () => get(`https://api.weather.gov/points/${pos.lat.toFixed(4)},${pos.lon.toFixed(4)}`));
+    const url = point?.properties?.forecastHourly;
+    if (!url) return [];
+    const d = await get(url);
+    return (d.properties?.periods || []).slice(0, 12).map(p => ({
+      start: p.startTime, forecast: p.shortForecast, pop: p.probabilityOfPrecipitation?.value ?? null,
+    }));
+  });
+}
+
+// A lightning sensor entity in Home Assistant (Ecowitt, Ambient, ESPHome
+// AS3935, ...). Its state is the distance to the last strike, and it changes
+// when a new strike is detected.
+async function lightningSensor() {
+  if (!options.lightning_entity) return null;
+  if (!ha.available) return { entity: options.lightning_entity, error: 'Home Assistant API not available' };
+  try {
+    const s = await ha.getState(options.lightning_entity);
+    if (!s) return { entity: options.lightning_entity, error: 'Entity not found' };
+    const raw = num(s.state);
+    const unit = String(s.attributes?.unit_of_measurement || 'km').toLowerCase();
+    const km = raw === null ? null : unit === 'mi' ? raw * 1.609344 : unit === 'm' ? raw / 1000 : raw;
+    return { entity: options.lightning_entity, name: s.attributes?.friendly_name || options.lightning_entity, km, lastStrike: s.last_changed };
+  } catch (e) {
+    return { entity: options.lightning_entity, error: e.message };
+  }
+}
+
+const unitKm = () => (options.distance_units === 'mi' ? 1.609344 : 1);
+
+async function stormSafety() {
+  const pos = gridToLatLon(options.grid);
+  const useNws = options.nws_alerts && pos;
+  const [alerts, hourly, sensor] = await Promise.all([
+    useNws ? nwsAlerts(pos) : null, useNws ? nwsHourly(pos) : null, lightningSensor(),
+  ].map(settle));
+  const alertKm = options.lightning_alert_distance * unitKm();
+  const strikeAge = sensor?.lastStrike ? Date.now() - Date.parse(sensor.lastStrike) : Infinity;
+  const recent = sensor?.km != null && strikeAge < 30 * MIN;
+  const danger = (alerts || []).filter(a => a.storm === 'danger');
+  const caution = (alerts || []).filter(a => a.storm === 'caution');
+  const thunder = (hourly || []).filter(h => /thunder/i.test(h.forecast));
+  const thunderSoon = thunder.some(h => Date.parse(h.start) - Date.now() < 3 * 3600_000);
+
+  const reasons = [];
+  if (recent && sensor.km <= alertKm) reasons.push(`Lightning ${Math.round(sensor.km / unitKm())} ${options.distance_units} away`);
+  for (const a of danger) reasons.push(a.event);
+  let level = reasons.length ? 'danger' : 'safe';
+  if (level === 'safe') {
+    if (recent && sensor.km <= alertKm * 2) reasons.push(`Lightning ${Math.round(sensor.km / unitKm())} ${options.distance_units} away`);
+    for (const a of caution) reasons.push(a.event);
+    if (thunderSoon) reasons.push('Thunderstorms forecast within 3 hours');
+    if (reasons.length) level = 'caution';
+  }
+  return {
+    level, reasons, updated: new Date().toISOString(),
+    alertDistance: options.lightning_alert_distance, units: options.distance_units,
+    nws: useNws ? { available: alerts !== null, alerts: alerts || [], hourly: hourly || [] } : null,
+    sensor: sensor && { ...sensor, recent, distance: sensor.km != null ? +(sensor.km / unitKm()).toFixed(1) : null },
+  };
+}
+
+let lastStormLevel = null;
+
+// Runs every minute: storm safety needs to be quicker than the 5-minute sensors.
+async function publishStorm() {
+  if (!ha.enabled) return;
+  let s;
+  try { s = await stormSafety(); } catch (e) { console.warn('[storm]', e.message); return; }
+  const label = s.level[0].toUpperCase() + s.level.slice(1);
+  const entities = [
+    ['binary_sensor.ham_lightning_danger', s.level === 'danger' ? 'on' : 'off', {
+      friendly_name: 'Lightning danger', device_class: 'safety', icon: 'mdi:weather-lightning',
+      level: label, reasons: s.reasons,
+    }],
+    ['sensor.ham_storm_status', label, { friendly_name: 'Station storm status', icon: 'mdi:weather-lightning-rainy', reasons: s.reasons }],
+  ];
+  if (s.nws) {
+    entities.push(['sensor.ham_nws_alerts', s.nws.available ? s.nws.alerts.length : null, {
+      friendly_name: 'NWS alerts', icon: 'mdi:alert', state_class: 'measurement',
+      alerts: s.nws.alerts.map(a => ({ event: a.event, headline: a.headline, ends: a.ends })),
+    }]);
+  }
+  if (s.sensor && !s.sensor.error) {
+    entities.push(['sensor.ham_lightning_distance', s.sensor.distance, {
+      friendly_name: 'Last lightning strike distance', unit_of_measurement: options.distance_units, icon: 'mdi:flash',
+      last_strike: s.sensor.lastStrike, source: s.sensor.entity,
+    }]);
+  }
+  await ha.publish(entities);
+  if (s.level === 'danger' && lastStormLevel !== 'danger') {
+    ha.fireEvent('ham_dashboard_storm_danger', { reasons: s.reasons, time: s.updated });
+  }
+  lastStormLevel = s.level;
 }
 
 // ---------------------------------------------------------------- Home Assistant entities
@@ -559,6 +731,18 @@ async function haEntities() {
         spots: near.slice(0, 10).map(({ s, d }) => ({ activator: s.activator, reference: s.reference, park: s.park, frequency_khz: s.freq, mode: s.mode, distance_km: Math.round(d) })),
       });
     } catch (e) { console.warn('[ha] pota:', e.message); }
+
+    try {
+      const act = await bandActivity(pos);
+      for (const [band, a] of Object.entries(act.bands)) {
+        sensor(`activity_${band}`, a.stations, {
+          friendly_name: `${band} stations heard nearby`, icon: 'mdi:access-point', state_class: 'measurement',
+          dx_stations: a.dx, receivers: a.receivers, reports: a.reports,
+          farthest_call: a.farthest?.call ?? null, farthest_km: a.farthest?.km ?? null,
+          window_min: act.windowMin, radius_km: act.radiusKm,
+        });
+      }
+    } catch (e) { console.warn('[ha] activity:', e.message); }
   }
   return out;
 }
@@ -762,6 +946,13 @@ async function api(route, q, res) {
         ha: ha.status(),
         spot_watch: options.spot_watch,
       });
+    case '/api/activity': {
+      const lat = num(q.get('lat')), lon = num(q.get('lon'));
+      if (lat === null || lon === null || Math.abs(lat) > 90 || Math.abs(lon) > 180) return send(res, 400, { error: 'Set a valid grid square' });
+      return send(res, 200, await bandActivity({ lat, lon }));
+    }
+    case '/api/storm':
+      return send(res, 200, await stormSafety());
     case '/api/pota':
       return send(res, 200, { spots: await potaSpots() });
     case '/api/satellites': {
@@ -847,5 +1038,7 @@ http.createServer(async (req, res) => {
     setInterval(publishHa, 5 * MIN);
     setTimeout(checkPotaAlerts, 25_000);
     setInterval(checkPotaAlerts, 2 * MIN);
+    setTimeout(publishStorm, 15_000);
+    setInterval(publishStorm, MIN);
   }
 });

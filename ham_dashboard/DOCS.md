@@ -17,7 +17,21 @@ fires events you can use in automations (see [Home Assistant sensors and alerts]
   - *At your QTH now* – a local estimate that compares each band with the MUF(3000)
     measured by the nearest ionosonde (within 3000 km, last 3 hours), adjusted for
     daytime D-layer absorption on 80/60/40 m and for geomagnetic storms.
+  - *Heard nearby* – measured activity: how many distinct stations PSKReporter
+    monitors within about 500 miles of you decoded on each band in the last 15
+    minutes (mostly FT8/FT4), how many of them were DX (over about 1,550 miles
+    away), and the farthest one. Zero can also mean nobody nearby is listening on
+    that band. Updated every 5 minutes.
   - VHF: aurora and sporadic-E status.
+- **Station storm safety** – a Safe / Caution / Danger status for your station,
+  with a red banner on every tab when it's Danger. It combines:
+  - National Weather Service alerts for your grid square (US only). Severe
+    thunderstorm, tornado and extreme wind warnings mean Danger. Watches, and
+    special weather statements about thunderstorms, mean Caution.
+  - The NWS hourly forecast: thunderstorms expected within 3 hours mean Caution.
+  - An optional lightning sensor in Home Assistant (Ecowitt WH57, Ambient Weather,
+    ESPHome AS3935 and similar). A strike within `lightning_alert_distance` in the
+    last 30 minutes means Danger, and within twice that distance means Caution.
 - **Maps** – live gray line (day/night/twilight) with sunrise, sunset and gray-line
   times at your QTH, plus the KC2G MUF and foF2 maps.
 - **Kp chart** – the past 4 days and the 3-day forecast.
@@ -129,6 +143,9 @@ Each callsign is cached for a day so repeated lookups don't hit QRZ again.
 | `ha_sensors` | Publish `sensor.ham_*` and `binary_sensor.ham_*` entities and fire `ham_dashboard_*` events. On by default. |
 | `spot_watch` | Callsigns or prefixes to watch on the DX cluster, e.g. `VP8PJ` or `3Y0`. Matches are highlighted in the spots table and fire a `ham_dashboard_dx_spot` event. |
 | `pota_alert_radius` | Fire a `ham_dashboard_pota_spot` event for new POTA activations within this distance, in your units. `0` turns POTA alerts off. Default 100. |
+| `nws_alerts` | Use National Weather Service alerts and the hourly forecast for storm safety (US only). On by default. |
+| `lightning_entity` | Optional. A Home Assistant sensor whose state is the distance to the last lightning strike, e.g. `sensor.ecowitt_lightning_distance`. |
+| `lightning_alert_distance` | Strikes within this distance (your units) in the last 30 minutes mean Danger. Default 15. |
 
 `callsign`, `grid` and `distance_units` are the defaults for everyone who opens the
 panel. Each person can also click the callsign/grid chip at the top right and enter
@@ -152,6 +169,11 @@ add-on's `grid` for anything location-based:
 | `sensor.ham_next_pass_iss`, `sensor.ham_next_pass_so_50`, … | Rise time of each satellite's next pass of 10° or more, with elevation, azimuths and frequencies as attributes |
 | `sensor.ham_next_good_pass` | The next pass of any satellite reaching 30° or more |
 | `sensor.ham_pota_nearby` | Number of POTA activators within your POTA alert radius, with the closest ten as an attribute |
+| `sensor.ham_activity_80m` … `sensor.ham_activity_6m` | Stations heard nearby on that band in the last 15 minutes, with DX count and farthest station as attributes |
+| `binary_sensor.ham_lightning_danger` | On when storm safety is Danger (safety device class), with the reasons as an attribute. Updated every minute. |
+| `sensor.ham_storm_status` | `Safe`, `Caution` or `Danger` |
+| `sensor.ham_nws_alerts` | Number of active NWS alerts for your location, with the list as an attribute |
+| `sensor.ham_lightning_distance` | Distance to the last strike, when a lightning sensor is set |
 
 It also fires events:
 
@@ -160,8 +182,9 @@ It also fires events:
 - `ham_dashboard_pota_spot` when a new POTA activation appears within
   `pota_alert_radius` (`activator`, `reference`, `park`, `frequency_khz`, `band`,
   `mode`, `distance_km`, `bearing`).
+- `ham_dashboard_storm_danger` when storm safety changes to Danger (`reasons`).
 
-Each alert fires at most once every 30 minutes per station and band.
+DX and POTA alerts fire at most once every 30 minutes per station and band.
 
 These entities are created through Home Assistant's API, so they can't be renamed
 in the UI, and they show as unavailable for a few minutes after Home Assistant
@@ -172,6 +195,31 @@ restarts until the next update.
 Replace `notify.mobile_app_your_phone` with your own notify service.
 
 ```yaml
+- alias: "Disconnect antennas on lightning danger"
+  triggers:
+    - trigger: state
+      entity_id: binary_sensor.ham_lightning_danger
+      to: "on"
+  actions:
+    # Replace with the smart plug or relay that feeds your antenna switch.
+    - action: switch.turn_off
+      target:
+        entity_id: switch.antenna_relay
+    - action: notify.mobile_app_your_phone
+      data:
+        message: "Lightning danger: {{ state_attr('binary_sensor.ham_lightning_danger', 'reasons') | join(', ') }}. Antennas disconnected."
+
+- alias: "10m has DX"
+  triggers:
+    - trigger: numeric_state
+      entity_id: sensor.ham_activity_10m
+      attribute: dx_stations
+      above: 3
+  actions:
+    - action: notify.mobile_app_your_phone
+      data:
+        message: "10m is open: {{ state_attr('sensor.ham_activity_10m', 'dx_stations') }} DX stations heard nearby, farthest {{ state_attr('sensor.ham_activity_10m', 'farthest_call') }}"
+
 - alias: "10m is open"
   triggers:
     - trigger: state
@@ -240,6 +288,8 @@ Replace `notify.mobile_app_your_phone` with your own notify service.
 - [APRS-IS](https://www.aprs2.net/) via `rotate.aprs2.net:14580`, receive-only (live)
 - [POTA](https://pota.app/) activator spots (cached 1 min; polled every 2 min for alerts)
 - [CelesTrak](https://celestrak.org/) amateur satellite elements (cached 12 h)
+- [PSKReporter](https://pskreporter.info/) area query for band activity (one query every 5 minutes, as PSKReporter asks)
+- [National Weather Service](https://www.weather.gov/documentation/services-web-api) alerts (cached 2 min) and hourly forecast (cached 30 min)
 
 The add-on caches everything server-side, so opening the dashboard on several
 devices doesn't multiply the requests to these free services.
@@ -250,5 +300,8 @@ devices doesn't multiply the requests to these free services.
   It is most useful when an ionosonde is reasonably close to you.
 - The DX cluster requires a callsign to log in. Without one, the spots panel stays
   empty.
+- Storm safety is an aid, not a guarantee. Disconnect antennas whenever you hear
+  thunder, whatever the dashboard says. Blitzortung lightning data isn't used: its
+  terms don't allow storm warnings or equipment protection.
 - RepeaterBook isn't used as a data source. Its API is limited to approved apps and
   excludes nearby-repeater finders, so the dashboard only links to its pages.
