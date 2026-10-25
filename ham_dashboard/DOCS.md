@@ -22,7 +22,8 @@ takes about 10 seconds. You can skip setup, and run it again from settings (⚙ 
 top right).
 
 After setup, and once in every new browser, a short **tour** walks through the tabs.
-It's skippable and can be replayed from settings.
+It's skippable and can be replayed from settings. To see the whole first run again
+(for example after an update), use **Start over as a new user** in settings.
 
 ### Licensed, GMRS or just listening
 

@@ -442,7 +442,9 @@ table.aprs-table td:last-child .sub { white-space: normal; max-width: 260px; }
 .storm-alerts { margin-top: 12px; }
 
 /* ------------------------------------------------------------ Leaflet maps */
-.lmap { width: 100%; background: var(--ocean); font: inherit; }
+/* isolation keeps Leaflet's high pane z-indexes (200-1000) inside the map, so
+   the tour, setup and tooltips always sit above maps. */
+.lmap { width: 100%; background: var(--ocean); font: inherit; position: relative; isolation: isolate; }
 .lmap.world { aspect-ratio: 2 / 1; min-height: 240px; }
 .lmap.local { aspect-ratio: 1 / 1; max-height: 75vh; }
 .lmap.aprs { aspect-ratio: 4 / 3; max-height: 75vh; }

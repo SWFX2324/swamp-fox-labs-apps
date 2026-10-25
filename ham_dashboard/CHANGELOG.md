@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.1
+
+- Fixed: the tour and setup boxes couldn't be clicked when they sat over a map (the
+  clicks went to the map instead). Maps now always stay underneath them.
+- **Start over as a new user** in settings: clears this browser's dashboard settings
+  and opens setup with blank answers, so you can go through first run the way a new
+  user sees it. Your Home Assistant configuration only changes if you save at the end.
+- Skipping setup now starts the tour, like finishing it does.
+
 ## 0.8.0
 
 - **Setup on first run**: pick licensed amateur, GMRS or just listening, then your

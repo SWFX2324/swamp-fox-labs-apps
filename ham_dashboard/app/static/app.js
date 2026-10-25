@@ -1815,8 +1815,9 @@
   const setup = { step: 0, data: null, busy: false, rerun: false };
 
   // rerun: opened from settings, so the first step offers Cancel instead of Skip.
-  function openSetup({ rerun = false } = {}) {
-    const d = state.defaults;
+  // fresh: blank answers, exactly what a brand-new install sees.
+  function openSetup({ rerun = false, fresh = false } = {}) {
+    const d = fresh ? {} : state.defaults;
     setup.step = 0;
     setup.rerun = rerun;
     setup.data = {
@@ -2010,6 +2011,7 @@
         else storeSet('hamdash.setupLocal', '1');
         closeSetup();
         if (!station().grid) openSettings();
+        else if (!storeGet('hamdash.tourDone')) startTour();
       } else if (t.id === 'setupCancel') {
         closeSetup();
       } else if (t.id === 'setupBack') {
@@ -2175,6 +2177,7 @@
     $('#setTabs').innerHTML = TAB_NAMES.filter(([v]) => v !== 'weather')
       .map(([v, label]) => `<label class="check"><input type="checkbox" value="${v}"${hidden.has(v) ? '' : ' checked'}> ${label}</label>`).join('');
     $('#rerunSetup').hidden = !d.setup?.canSave;
+    $('#startOver').hidden = !d.setup?.canSave;
     $('#settingsError').hidden = true;
     $('#settings').showModal();
   }
@@ -2183,6 +2186,20 @@
     $('#stationBtn').addEventListener('click', openSettings);
     $('#startTour').addEventListener('click', () => { $('#settings').close(); startTour(); });
     $('#rerunSetup').addEventListener('click', () => { $('#settings').close(); openSetup({ rerun: true }); });
+    $('#startOver').addEventListener('click', () => {
+      const msg = [
+        'Start over as a new user?',
+        '',
+        'This clears this browser’s dashboard settings (tour, hidden tabs, map layers, callsign and grid overrides) and opens setup with blank answers. Your Home Assistant settings only change if you save at the end.',
+      ].join(String.fromCharCode(10));
+      if (!confirm(msg)) return;
+      for (const k of Object.keys(localStorage)) if (k.startsWith('hamdash.')) storeSet(k, null);
+      state.settings = {};
+      $('#settings').close();
+      applyTabVisibility();
+      stationChanged();
+      openSetup({ fresh: true });
+    });
     $('#cancelSettings').addEventListener('click', () => $('#settings').close());
     $('#resetSettings').addEventListener('click', () => {
       state.settings = { hiddenTabs: state.settings.hiddenTabs };
