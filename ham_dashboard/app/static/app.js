@@ -248,7 +248,7 @@
     }).join('');
   }
 
-  // ------------------------------------------------------------ gray line map
+  // ------------------------------------------------------------ maps (Leaflet)
 
   function decodeLand(topo) {
     const [sx, sy] = topo.transform.scale, [tx, ty] = topo.transform.translate;
@@ -257,8 +257,8 @@
       return arc.map(([dx, dy]) => { x += dx; y += dy; return [x * sx + tx, y * sy + ty]; });
     });
     // world-atlas rings may cross the antimeridian. Unwrap longitudes so each
-    // ring is continuous (drawn again at ±360°), and close rings that wrap all
-    // the way around a pole (Antarctica) along that pole.
+    // ring is continuous, and close rings that wrap all the way around a pole
+    // (Antarctica) along that pole.
     const unwrap = pts => {
       const out = [pts[0].slice()];
       for (let i = 1; i < pts.length; i++) {
@@ -289,8 +289,6 @@
     return polys;
   }
 
-  const canvasDots = new WeakMap();
-
   // Size a canvas to its CSS box at device resolution; returns a 2D context.
   function fitCanvas(canvas, w, h) {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -301,153 +299,249 @@
     return ctx;
   }
 
-  // Equirectangular world map with land, live night/gray-line shading and the
-  // subsolar point. `overlay(ctx, X, Y, dots)` draws extra markers and pushes
-  // hover targets ({x, y, html}) into `dots`.
-  function drawWorld(canvas, overlay) {
-    const w = canvas.clientWidth;
-    if (!w) return null;
-    const h = w / 2;
-    const ctx = fitCanvas(canvas, w, h);
-    const X = lon => ((lon + 180) / 360) * w;
-    const Y = lat => ((90 - lat) / 180) * h;
-
-    ctx.fillStyle = css('--ocean');
-    ctx.fillRect(0, 0, w, h);
-
-    ctx.strokeStyle = css('--grid-line');
-    ctx.lineWidth = 0.5;
-    ctx.beginPath();
-    for (let lon = -150; lon < 180; lon += 30) { ctx.moveTo(X(lon), 0); ctx.lineTo(X(lon), h); }
-    for (let lat = -60; lat <= 60; lat += 30) { ctx.moveTo(0, Y(lat)); ctx.lineTo(w, Y(lat)); }
-    ctx.stroke();
-
-    if (state.land) {
-      ctx.fillStyle = css('--land');
-      ctx.strokeStyle = css('--land-edge');
-      ctx.lineWidth = 0.6;
-      for (const poly of state.land) {
-        const lons = poly[0].map(p => p[0]);
-        const offsets = [0];
-        if (Math.min(...lons) < -180) offsets.push(360);
-        if (Math.max(...lons) > 180) offsets.push(-360);
-        for (const off of offsets) {
-          ctx.beginPath();
-          for (const ring of poly) {
-            ring.forEach(([lon, lat], i) => (i ? ctx.lineTo(X(lon + off), Y(lat)) : ctx.moveTo(X(lon + off), Y(lat))));
-            ctx.closePath();
-          }
-          ctx.fill('evenodd');
-          ctx.stroke();
-        }
-      }
-    }
-
-    // Night shading at low resolution, scaled up smoothly.
-    const sun = sunPosition(new Date());
-    const ow = 720, oh = 360;
-    const off = document.createElement('canvas');
-    off.width = ow; off.height = oh;
-    const octx = off.getContext('2d');
-    const img = octx.createImageData(ow, oh);
-    const [nr, ng, nb] = css('--night').split(',').map(Number);
-    const smooth = (e0, e1, v) => { const t = Math.max(0, Math.min(1, (v - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };
-    for (let y = 0; y < oh; y++) {
-      const lat = 90 - ((y + 0.5) * 180) / oh;
-      for (let x = 0; x < ow; x++) {
-        const lon = -180 + ((x + 0.5) * 360) / ow;
-        const alt = sunAltitude(sun, lat, lon);
-        if (alt > 1) continue;
-        const i = (y * ow + x) * 4;
-        // Night darkens smoothly from the terminator to astronomical night;
-        // the gray line (sun 0..-6°) gets a warm tint that fades at both edges.
-        const night = smooth(1, -2, alt) * (0.4 + 0.3 * smooth(-6, -18, alt));
-        const gray = Math.max(0, 1 - Math.abs(alt + 3) / 4);
-        img.data[i] = nr + (214 - nr) * gray;
-        img.data[i + 1] = ng + (160 - ng) * gray;
-        img.data[i + 2] = nb + (60 - nb) * gray;
-        img.data[i + 3] = Math.round(255 * (night * (1 - gray) + 0.32 * gray));
-      }
-    }
-    octx.putImageData(img, 0, 0);
-    ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(off, 0, 0, w, h);
-
-    const dots = [];
-    const sx = X(sun.lon), sy = Y(sun.lat);
-    ctx.fillStyle = '#fab219';
-    ctx.strokeStyle = '#8a5a00';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.arc(sx, sy, 7, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
-    dots.push({ x: sx, y: sy, html: `<b>Sun overhead</b>${tipRow('Lat', sun.lat.toFixed(1) + '°')}${tipRow('Lon', sun.lon.toFixed(1) + '°')}` });
-
-    overlay?.(ctx, X, Y, dots);
-    canvasDots.set(canvas, dots);
-    return { sun, night: [nr, ng, nb] };
-  }
-
-  // Ringed dot marking the operator's QTH.
-  function drawQth(ctx, x, y) {
-    ctx.strokeStyle = css('--card');
-    ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.arc(x, y, 7, 0, 2 * Math.PI); ctx.stroke();
-    ctx.strokeStyle = css('--text');
-    ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(x, y, 7, 0, 2 * Math.PI); ctx.stroke();
-    ctx.fillStyle = css('--text');
-    ctx.beginPath(); ctx.arc(x, y, 2.5, 0, 2 * Math.PI); ctx.fill();
-  }
-
   const legendKey = (swatch, label) => `<span><span class="sw" style="${swatch}"></span>${esc(label)}</span>`;
-  const nightLegend = night => legendKey(`background:rgb(${night.join(' ')} / .6)`, 'Night') +
+  const nightLegend = () => legendKey(`background:rgb(${css('--night').split(',').join(' ')} / .6)`, 'Night') +
     legendKey('background:rgb(214 160 60 / .55)', 'Gray line (civil twilight)') +
     legendKey('background:#fab219;border-radius:50%', 'Sun overhead');
 
+  // Base layers. OpenStreetMap tiles (with a CSS filter for "Dark") and USGS
+  // National Map imagery/topo (public domain, high resolution in the US only).
+  // "Plain" draws the bundled land outline and needs no tile server.
+  const OSM_ATTR = '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors';
+  const USGS_ATTR = 'Imagery: <a href="https://www.usgs.gov/programs/national-geospatial-program/national-map" target="_blank" rel="noopener">USGS The National Map</a>';
+  const USGS = 'https://basemap.nationalmap.gov/arcgis/rest/services';
+  const BASEMAPS = [
+    ['dark', 'Dark', 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxNativeZoom: 19, attribution: OSM_ATTR, className: 'tiles-dark' }],
+    ['streets', 'Streets', 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxNativeZoom: 19, attribution: OSM_ATTR }],
+    ['satellite', 'Satellite (US)', `${USGS}/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}`, { maxNativeZoom: 16, attribution: USGS_ATTR }],
+    ['topo', 'Topo (US)', `${USGS}/USGSTopo/MapServer/tile/{z}/{y}/{x}`, { maxNativeZoom: 16, attribution: USGS_ATTR }],
+    ['plain', 'Plain (offline)', null, {}],
+  ];
+  const TIP = { direction: 'top', offset: [0, -6], className: 'map-tip', opacity: 1 };
+  const maps = {};
+
+  // Night and gray-line shading, computed per tile from the sun's altitude so
+  // it lines up exactly at any zoom. refresh() moves it to "now".
+  const NightLayer = L.GridLayer.extend({
+    options: { zIndex: 5, updateWhenZooming: false },
+    refresh() {
+      this.sun = sunPosition(new Date());
+      this.rgb = css('--night').split(',').map(Number);
+      this.redraw();
+    },
+    createTile(coords) {
+      const S = 64, step = this.getTileSize().x / S;
+      const tile = document.createElement('canvas');
+      tile.width = tile.height = S;
+      const ctx = tile.getContext('2d');
+      const img = ctx.createImageData(S, S);
+      const sun = this.sun || sunPosition(new Date());
+      const [nr, ng, nb] = this.rgb || css('--night').split(',').map(Number);
+      const origin = coords.scaleBy(this.getTileSize());
+      const smooth = (e0, e1, v) => { const t = Math.max(0, Math.min(1, (v - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };
+      for (let y = 0; y < S; y++) {
+        for (let x = 0; x < S; x++) {
+          const ll = this._map.unproject(origin.add([(x + 0.5) * step, (y + 0.5) * step]), coords.z);
+          const alt = sunAltitude(sun, ll.lat, ll.lng);
+          if (alt > 1) continue;
+          const i = (y * S + x) * 4;
+          const night = smooth(1, -2, alt) * (0.4 + 0.3 * smooth(-6, -18, alt));
+          const gray = Math.max(0, 1 - Math.abs(alt + 3) / 4);
+          img.data[i] = nr + (214 - nr) * gray;
+          img.data[i + 1] = ng + (160 - ng) * gray;
+          img.data[i + 2] = nb + (60 - nb) * gray;
+          img.data[i + 3] = Math.round(255 * (night * (1 - gray) + 0.32 * gray));
+        }
+      }
+      ctx.putImageData(img, 0, 0);
+      return tile;
+    },
+  });
+
+  const HomeControl = L.Control.extend({
+    options: { position: 'topleft' },
+    onAdd() {
+      const bar = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+      const a = L.DomUtil.create('a', 'map-home', bar);
+      a.href = '#';
+      a.title = 'Reset view';
+      a.setAttribute('role', 'button');
+      a.setAttribute('aria-label', 'Reset view');
+      a.textContent = '⌂';
+      L.DomEvent.disableClickPropagation(bar);
+      L.DomEvent.on(a, 'click', e => { L.DomEvent.preventDefault(e); this.options.onClick(); });
+      return bar;
+    },
+  });
+
+  function landLayer() {
+    const layer = L.layerGroup();
+    layer.refill = () => {
+      layer.clearLayers();
+      if (!state.land) return;
+      L.geoJSON({
+        type: 'FeatureCollection',
+        features: state.land.map(rings => ({ type: 'Feature', geometry: { type: 'Polygon', coordinates: rings } })),
+      }, { interactive: false, style: { color: css('--land-edge'), weight: 0.6, fillColor: css('--land'), fillOpacity: 1 } }).addTo(layer);
+    };
+    layer.refill();
+    return layer;
+  }
+
+  // One Leaflet map per key, created the first time its view is visible.
+  // opts: { world, night, home() }
+  function makeMap(key, el, opts = {}) {
+    if (maps[key]) return maps[key];
+    const map = L.map(el, { preferCanvas: true, worldCopyJump: true, zoomSnap: 0.5, minZoom: opts.world ? 0 : 3, scrollWheelZoom: false });
+    map.attributionControl.setPrefix('<a href="https://leafletjs.com" target="_blank" rel="noopener">Leaflet</a>');
+    // Wheel zoom only after the map is clicked, so scrolling the page past a
+    // map doesn't zoom it by accident.
+    map.on('click focus', () => map.scrollWheelZoom.enable());
+    map.on('mouseout blur', () => map.scrollWheelZoom.disable());
+
+    const plain = landLayer();
+    const bases = {}, idOf = new Map();
+    for (const [id, label, url, o] of BASEMAPS) {
+      const layer = url ? L.tileLayer(url, { maxZoom: 19, ...o }) : plain;
+      bases[label] = layer;
+      idOf.set(layer, id);
+    }
+    const saved = storeGet(`hamdash.layer.${key}`);
+    const start = BASEMAPS.some(b => b[0] === saved) ? saved : matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'streets';
+    bases[BASEMAPS.find(b => b[0] === start)[1]].addTo(map);
+    el.classList.toggle('map-plain', start === 'plain');
+
+    const m = { key, map, plain, group: L.layerGroup().addTo(map), labels: [], fitKey: null };
+    const overlays = {};
+    if (opts.night) {
+      m.night = new NightLayer();
+      m.night.addTo(map);
+      overlays['Day / night'] = m.night;
+    }
+    L.control.layers(bases, overlays, { position: 'topright' }).addTo(map);
+    map.on('baselayerchange', e => {
+      const id = idOf.get(e.layer);
+      storeSet(`hamdash.layer.${key}`, id);
+      el.classList.toggle('map-plain', id === 'plain');
+    });
+    if (opts.home) new HomeControl({ onClick: opts.home }).addTo(map);
+    map.on('zoomend moveend', () => declutter(m));
+    maps[key] = m;
+    return m;
+  }
+
+  // Leaflet sizes maps when they're created; views that were hidden need a nudge.
+  function refreshMapSize(key) { maps[key]?.map.invalidateSize(); }
+
+  const ll = p => L.latLng(p.lat, p.lon);
+
+  function dot(p, color, { radius = 5, hollow = false } = {}) {
+    return L.circleMarker(ll(p), {
+      radius, weight: 1.5,
+      color: hollow ? color : css('--card'), fillColor: hollow ? css('--card') : color, fillOpacity: 1,
+    });
+  }
+
+  function qthMarker(p, html) {
+    return L.layerGroup([
+      L.circleMarker(ll(p), { radius: 8, weight: 4, color: css('--card'), fill: false, interactive: false }),
+      L.circleMarker(ll(p), { radius: 8, weight: 2, color: css('--text'), fill: false, interactive: false }),
+      L.circleMarker(ll(p), { radius: 3, weight: 0, fillColor: css('--text'), fillOpacity: 1 }).bindTooltip(html, TIP),
+    ]);
+  }
+
+  // A shape that isn't a circle: 'tri' (ionosonde), 'diamond' (object), or an
+  // arrow rotated to a course.
+  function shapeMarker(p, shape, color, course) {
+    const html = shape === 'arrow'
+      ? `<span class="map-arrow" style="--c:${color};transform:rotate(${Math.round(course)}deg)"></span>`
+      : `<span class="map-${shape}" style="--c:${color}"></span>`;
+    return L.marker(ll(p), { icon: L.divIcon({ className: 'map-shape', html, iconSize: [14, 14], iconAnchor: [7, 7] }) });
+  }
+
+  function highlightRing(p) {
+    return L.circleMarker(ll(p), { radius: 11, weight: 2, color: css('--text'), fill: false, interactive: false });
+  }
+
+  // Name labels as separate markers, so the hover tooltip stays free.
+  function addLabel(m, p, text) {
+    const label = L.marker(ll(p), {
+      icon: L.divIcon({ className: 'map-label', html: esc(text), iconSize: null, iconAnchor: [-8, 8] }),
+      interactive: false, keyboard: false,
+    }).addTo(m.group);
+    m.labels.push(label);
+  }
+
+  // Hide labels that would overlap ones already shown.
+  function declutter(m) {
+    const placed = [];
+    for (const label of m.labels) {
+      const el = label.getElement();
+      if (!el) continue;
+      el.style.visibility = 'visible';
+      const r = el.getBoundingClientRect();
+      if (placed.some(b => r.left < b.right && b.left < r.right && r.top < b.bottom && b.top < r.bottom)) el.style.visibility = 'hidden';
+      else placed.push(r);
+    }
+  }
+
+  function rangeRings(m, center, radiusKm, radiusInUnits) {
+    const units = station().units;
+    for (let i = 1; i <= 4; i++) {
+      const km = (radiusKm * i) / 4;
+      L.circle(ll(center), { radius: km * 1000, color: css('--muted'), weight: 1, opacity: 0.7, dashArray: '4 4', fill: false, interactive: false }).addTo(m.group);
+      L.marker([center.lat + km / 111.2, center.lon], {
+        icon: L.divIcon({ className: 'ring-label', html: `${+((radiusInUnits * i) / 4).toFixed(1)} ${units}`, iconSize: null, iconAnchor: [-4, 14] }),
+        interactive: false, keyboard: false,
+      }).addTo(m.group);
+    }
+  }
+
+  const fitRadius = (m, center, km) => m.map.fitBounds(ll(center).toBounds(km * 2000), { padding: [8, 8] });
+
+  // ------------------------------------------------------------ gray line map
+
   function drawGrayline() {
+    const el = $('#grayline');
+    if (!el.offsetWidth) return;
+    const home = () => maps.grayline.map.setView([25, 0], el.offsetWidth < 520 ? 0 : 1);
+    const m = makeMap('grayline', el, { world: true, night: true, home });
+    if (!m.fitKey) { home(); m.fitKey = 'world'; }
+    m.night.refresh();
+    m.group.clearLayers();
+
     const st = station();
     const pos = gridToLatLon(st.grid);
     const reports = state.psk?.reports || [];
     const iono = nearestIonosonde(pos);
 
-    const res = drawWorld($('#grayline'), (ctx, X, Y, dots) => {
-      // PSKReporter receivers.
-      ctx.fillStyle = css('--series-2');
-      ctx.strokeStyle = css('--card');
-      ctx.lineWidth = 1.5;
-      const seen = new Set();
-      for (const r of reports) {
-        if (seen.has(r.rx)) continue;
-        seen.add(r.rx);
-        const p = gridToLatLon(r.rxGrid);
-        if (!p) continue;
-        const x = X(p.lon), y = Y(p.lat);
-        ctx.beginPath(); ctx.arc(x, y, 4, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
-        dots.push({ x, y, html: `<b class="mono">${esc(r.rx)}</b><br>${esc(r.rxCountry || '')}${tipRow('Band', bandName(r.freq) || '—')}${tipRow('Mode', esc(r.mode))}${tipRow('SNR', `${r.snr ?? '—'} dB`)}${pos ? tipRow('Distance', fmtDist(distanceKm(pos, p))) : ''}` });
-      }
+    const seen = new Set();
+    for (const r of reports) {
+      if (seen.has(r.rx)) continue;
+      seen.add(r.rx);
+      const p = gridToLatLon(r.rxGrid);
+      if (!p) continue;
+      dot(p, css('--series-2'), { radius: 4 })
+        .bindTooltip(`<b class="mono">${esc(r.rx)}</b><br>${esc(r.rxCountry || '')}${tipRow('Band', bandName(r.freq) || '—')}${tipRow('Mode', esc(r.mode))}${tipRow('SNR', `${r.snr ?? '—'} dB`)}${pos ? tipRow('Distance', fmtDist(distanceKm(pos, p))) : ''}`, TIP)
+        .addTo(m.group);
+    }
+    if (iono) {
+      shapeMarker(iono, 'tri', css('--series-1'))
+        .bindTooltip(`<b>${esc(iono.name)}</b> ionosonde${tipRow('MUF(3000)', `${iono.mufd.toFixed(1)} MHz`)}${tipRow('foF2', `${iono.fof2?.toFixed(1) ?? '—'} MHz`)}${tipRow('Measured', ago(iono.time))}`, TIP)
+        .addTo(m.group);
+    }
+    const sun = sunPosition(new Date());
+    L.circleMarker(ll(sun), { radius: 7, weight: 1.5, color: '#8a5a00', fillColor: '#fab219', fillOpacity: 1 })
+      .bindTooltip(`<b>Sun overhead</b>${tipRow('Lat', sun.lat.toFixed(1) + '°')}${tipRow('Lon', sun.lon.toFixed(1) + '°')}`, TIP)
+      .addTo(m.group);
+    if (pos) qthMarker(pos, `<b class="mono">${esc(st.callsign || 'Your QTH')}</b>${tipRow('Grid', esc(st.grid))}`).addTo(m.group);
 
-      // Ionosonde used for the band estimate.
-      if (iono) {
-        const x = X(iono.lon), y = Y(iono.lat);
-        ctx.fillStyle = css('--series-1');
-        ctx.strokeStyle = css('--card');
-        ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.moveTo(x, y - 6); ctx.lineTo(x + 5.5, y + 4); ctx.lineTo(x - 5.5, y + 4); ctx.closePath(); ctx.fill(); ctx.stroke();
-        dots.push({ x, y, html: `<b>${esc(iono.name)}</b> ionosonde${tipRow('MUF(3000)', `${iono.mufd.toFixed(1)} MHz`)}${tipRow('foF2', `${iono.fof2?.toFixed(1) ?? '—'} MHz`)}${tipRow('Measured', ago(iono.time))}` });
-      }
-
-      if (pos) {
-        drawQth(ctx, X(pos.lon), Y(pos.lat));
-        dots.push({ x: X(pos.lon), y: Y(pos.lat), html: `<b class="mono">${esc(st.callsign || 'Your QTH')}</b>${tipRow('Grid', esc(st.grid))}` });
-      }
-    });
-    if (!res) return;
-
-    $('#graylineLegend').innerHTML = nightLegend(res.night) +
+    $('#graylineLegend').innerHTML = nightLegend() +
       (pos ? legendKey(`border:2px solid ${css('--text')};border-radius:50%`, 'Your QTH') : '') +
       (iono ? legendKey(`background:${css('--series-1')};clip-path:polygon(50% 0,100% 100%,0 100%)`, 'Ionosonde used') : '') +
       (reports.length ? legendKey(`background:${css('--series-2')};border-radius:50%`, 'Stations hearing you (PSKReporter)') : '');
 
-    renderSunTimes(pos, res.sun);
+    renderSunTimes(pos, sun);
   }
 
   function renderSunTimes(pos, sun) {
@@ -467,7 +561,10 @@
 
   const sunPhase = alt => (alt > 0 ? 'Daytime' : alt > -6 ? 'Gray line now!' : alt > -12 ? 'Nautical twilight' : 'Night');
 
-  // Tooltips for canvas markers: the nearest registered dot within 12px.
+  // Hover tooltips for the satellite sky plot (still a canvas): the nearest
+  // registered dot within 12px.
+  const canvasDots = new WeakMap();
+
   function bindCanvasHover(canvas) {
     canvas.addEventListener('mousemove', e => {
       const r = canvas.getBoundingClientRect();
@@ -478,10 +575,7 @@
         if (dd < bd) { bd = dd; best = d; }
       }
       if (best) showTip(best.html, e.clientX, e.clientY); else hideTip();
-      canvas.style.cursor = best?.onClick ? 'pointer' : '';
-      canvas._hoverDot = best;
     });
-    canvas.addEventListener('click', () => canvas._hoverDot?.onClick?.());
     canvas.addEventListener('mouseleave', hideTip);
   }
 
@@ -497,7 +591,7 @@
         if (on && img) img.src = `${img.dataset.src}?t=${Math.floor(Date.now() / 600000)}`;
       }
       storeSet('hamdash.map', name);
-      if (name === 'grayline') drawGrayline();
+      if (name === 'grayline') { drawGrayline(); refreshMapSize('grayline'); }
     };
     tabs.forEach(t => t.addEventListener('click', () => select(t.dataset.map)));
     const saved = storeGet('hamdash.map');
@@ -855,44 +949,27 @@
   // Canvases and charts can only be sized while their view is visible.
   function redrawVisible() {
     if (currentView === 'weather') {
-      if (!$('#panel-grayline').hidden) drawGrayline();
+      if (!$('#panel-grayline').hidden) { refreshMapSize('grayline'); drawGrayline(); }
       renderKp(); renderCycle();
     } else if (currentView === 'repeaters') {
+      refreshMapSize('repeaters');
       drawRepeaterMap();
     } else if (currentView === 'aprs') {
+      refreshMapSize('aprs');
       drawAprsMap();
     } else if (currentView === 'pota') {
+      refreshMapSize('pota');
       drawPotaMap();
     } else if (currentView === 'sats') {
       renderSats();
     } else {
+      refreshMapSize('lookup');
       drawLookupMap();
     }
   }
 
   const callLink = c => `<button type="button" class="call-link mono" data-call="${esc(c)}" title="Look up ${esc(c)}">${esc(c)}</button>`;
 
-  // Background, four range rings labelled in the user's units, and N/E/S/W,
-  // centred in a w×h canvas with outer ring radius R.
-  function drawRangeRings(ctx, w, h, R, radius) {
-    const cx = w / 2, cy = h / 2, units = station().units;
-    ctx.fillStyle = css('--card-2');
-    ctx.fillRect(0, 0, w, h);
-    ctx.strokeStyle = css('--grid-line');
-    ctx.lineWidth = 1;
-    ctx.fillStyle = css('--muted');
-    ctx.font = '11px system-ui, sans-serif';
-    for (let i = 1; i <= 4; i++) {
-      ctx.beginPath(); ctx.arc(cx, cy, (R * i) / 4, 0, 2 * Math.PI); ctx.stroke();
-      ctx.fillText(`${+((radius * i) / 4).toFixed(1)} ${units}`, cx + 4, cy - (R * i) / 4 + 12);
-    }
-    ctx.beginPath(); ctx.moveTo(cx, cy - R); ctx.lineTo(cx, cy + R); ctx.moveTo(cx - R, cy); ctx.lineTo(cx + R, cy); ctx.stroke();
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    for (const [t, x, y] of [['N', cx, cy - R - 12], ['S', cx, cy + R + 12], ['E', cx + R + 12, cy], ['W', cx - R - 12, cy]]) ctx.fillText(t, x, y);
-    ctx.textAlign = 'start';
-    ctx.textBaseline = 'alphabetic';
-  }
 
   // ------------------------------------------------------------ repeaters
 
@@ -1002,66 +1079,49 @@
     drawRepeaterMap();
   }
 
-  // Local map centred on the QTH with range rings; repeaters at the same site
-  // are fanned out around it so they stay hoverable.
+  // Local map around the QTH with range rings. Repeaters at the same site share
+  // one marker whose tooltip lists them all.
   function drawRepeaterMap() {
-    const canvas = $('#rptMap');
-    const w = canvas.clientWidth;
-    if (!w) return;
-    const ctx = fitCanvas(canvas, w, w);
-    const cx = w / 2, cy = w / 2, R = w / 2 - 24;
-    const radiusKm = rptRadiusKm();
-    drawRangeRings(ctx, w, w, R, +$('#rptRadius').value);
-
+    const el = $('#rptMap');
+    if (!el.offsetWidth) return;
     const pos = rpt.pos || gridToLatLon(station().grid);
-    const dots = [];
-    canvasDots.set(canvas, dots);
+    const m = makeMap('repeaters', el, {
+      home: () => { const p = rpt.pos || gridToLatLon(station().grid); if (p) fitRadius(maps.repeaters, p, rptRadiusKm()); },
+    });
+    m.group.clearLayers();
     if (!pos) return;
+    const fitKey = `${pos.lat},${pos.lon},${rptRadiusKm()}`;
+    if (m.fitKey !== fitKey) { fitRadius(m, pos, rptRadiusKm()); m.fitKey = fitKey; }
+    rangeRings(m, pos, rptRadiusKm(), +$('#rptRadius').value);
 
-    const kx = 111.32 * Math.cos(pos.lat * RAD), ky = 110.57;
     const color = { '2m': css('--series-1'), '70cm': css('--series-2') };
     const other = css('--series-3');
     const sites = new Map();
     for (const r of filteredRepeaters()) {
-      const x = cx + (((r.lon - pos.lon) * kx) / radiusKm) * R;
-      const y = cy - (((r.lat - pos.lat) * ky) / radiusKm) * R;
-      const k = `${Math.round(x / 6)},${Math.round(y / 6)}`;
-      if (!sites.has(k)) sites.set(k, { x, y, items: [] });
-      sites.get(k).items.push(r);
+      const k = `${r.lat.toFixed(4)},${r.lon.toFixed(4)}`;
+      if (!sites.has(k)) sites.set(k, []);
+      sites.get(k).push(r);
     }
-    for (const s of sites.values()) {
-      const n = s.items.length, spread = n > 1 ? Math.min(4 + n, 10) : 0;
-      s.items.forEach((r, i) => {
-        const a = (2 * Math.PI * i) / n - Math.PI / 2;
-        const x = s.x + spread * Math.cos(a), y = s.y + spread * Math.sin(a);
-        const c = color[rptBand(r.freq)] || other;
-        ctx.lineWidth = 1.5;
-        ctx.strokeStyle = r.operational ? css('--card') : c;
-        ctx.fillStyle = r.operational ? c : css('--card');
-        ctx.beginPath(); ctx.arc(x, y, 4.5, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
-        if (r.id === rpt.highlight) {
-          ctx.strokeStyle = css('--text');
-          ctx.lineWidth = 2;
-          ctx.beginPath(); ctx.arc(x, y, 9, 0, 2 * Math.PI); ctx.stroke();
-        }
-      });
-      const first = s.items[0];
-      dots.push({
-        x: s.x, y: s.y,
-        html: `<b>${esc(first.city || 'Repeater site')}</b><br><span class="k">${fmtDist(first.dist)} ${compass(first.bearing)}</span>` +
-          s.items.slice(0, 8).map(r => tipRow(`${r.call} ${r.mode}`, `${fmtMHz(r.freq)} ${esc(toneText(r))}`)).join('') +
-          (n > 8 ? `<div class="k">+${n - 8} more</div>` : ''),
-        onClick: () => focusRepeaterRow(first.id),
-      });
+    for (const items of sites.values()) {
+      const first = items[0], n = items.length;
+      const onAir = items.some(r => r.operational);
+      dot(first, color[rptBand(first.freq)] || other, { radius: n > 1 ? 6.5 : 5, hollow: !onAir })
+        .bindTooltip(`<b>${esc(first.city || 'Repeater site')}</b><br><span class="k">${fmtDist(first.dist)} ${compass(first.bearing)}${n > 1 ? ` · ${n} repeaters` : ''}</span>` +
+          items.slice(0, 8).map(r => tipRow(`${r.call} ${r.mode}`, `${fmtMHz(r.freq)} ${esc(toneText(r))}`)).join('') +
+          (n > 8 ? `<div class="k">+${n - 8} more</div>` : ''), TIP)
+        .on('click', () => focusRepeaterRow(first.id))
+        .addTo(m.group);
+      if (items.some(r => r.id === rpt.highlight)) highlightRing(first).addTo(m.group);
     }
-    drawQth(ctx, cx, cy);
+    qthMarker(pos, `<b class="mono">${esc(station().callsign || 'Your QTH')}</b>`).addTo(m.group);
 
     $('#rptLegend').innerHTML =
       legendKey(`background:${color['2m']};border-radius:50%`, '2 m') +
       legendKey(`background:${color['70cm']};border-radius:50%`, '70 cm') +
       legendKey(`background:${other};border-radius:50%`, 'Other bands') +
       legendKey(`border:2px solid ${css('--muted')};border-radius:50%`, 'Hollow = off air') +
-      legendKey(`border:2px solid ${css('--text')};border-radius:50%`, 'Your QTH');
+      legendKey(`border:2px solid ${css('--text')};border-radius:50%`, 'Your QTH') +
+      '<span class="k">Bigger dot = several repeaters at one site</span>';
   }
 
   function focusRepeaterRow(id) {
@@ -1122,18 +1182,6 @@
   const fmtWind = mph => (metric() ? `${Math.round(mph * 1.609344)} km/h` : `${Math.round(mph)} mph`);
   const fmtRain = inch => (metric() ? `${(inch * 25.4).toFixed(1)} mm` : `${inch.toFixed(2)} in`);
 
-  function aprsZoomOptions() {
-    const d = aprs.data, units = station().units;
-    const feed = d?.radiusKm ? Math.round(d.radiusKm / (units === 'mi' ? 1.609344 : 1)) : 100;
-    const opts = [...new Set([10, 25, 50, 100, 150, 200, 300].filter(v => v < feed).concat(feed))];
-    const sel = $('#aprsZoom');
-    const want = +storeGet(`hamdash.aprsZoom.${units}`) || feed;
-    if (sel.dataset.sig !== `${units}:${feed}`) {
-      sel.innerHTML = opts.map(v => `<option value="${v}"${v === want ? ' selected' : ''}>${v} ${units}</option>`).join('');
-      if (!opts.includes(want)) sel.value = String(feed);
-      sel.dataset.sig = `${units}:${feed}`;
-    }
-  }
 
   async function loadAprs() {
     try { aprs.data = await api('api/aprs'); } catch (e) { aprs.data = { status: 'error', error: e.message, stations: [] }; }
@@ -1162,7 +1210,6 @@
       'no-grid': 'Set a grid square in the add-on options', error: `Unavailable: ${d.error || ''}`,
     };
     $('#aprsStatus').textContent = STATUS[d.status] || d.status;
-    aprsZoomOptions();
 
     const all = aprsVisible();
     const counts = {};
@@ -1233,98 +1280,57 @@
   }
 
   function drawAprsMap() {
-    const canvas = $('#aprsMap');
-    const w = canvas.clientWidth;
-    if (!w) return;
-    const h = Math.round(w * 0.75);
-    const ctx = fitCanvas(canvas, w, h);
-    const R = Math.min(w, h) / 2 - 24, cx = w / 2, cy = h / 2;
-    const zoom = +$('#aprsZoom').value || 100;
-    const radiusKm = zoom * (station().units === 'mi' ? 1.609344 : 1);
-    drawRangeRings(ctx, w, h, R, zoom);
-
-    const dots = [];
-    canvasDots.set(canvas, dots);
+    const el = $('#aprsMap');
+    if (!el.offsetWidth) return;
     const d = aprs.data;
     const center = gridToLatLon(station().grid) || d?.center;
+    const m = makeMap('aprs', el, {
+      home: () => { const c = gridToLatLon(station().grid) || aprs.data?.center; if (c) fitRadius(maps.aprs, c, aprs.data?.radiusKm || 160); },
+    });
+    m.group.clearLayers();
+    m.labels = [];
     if (!center) return;
-    const kx = 111.32 * Math.cos(center.lat * RAD), ky = 110.57;
-    const P = (lat, lon) => [cx + (((lon - center.lon) * kx) / radiusKm) * R, cy - (((lat - center.lat) * ky) / radiusKm) * R];
-    const list = aprsVisible().filter(st => (!aprs.cat || st.cat === aprs.cat) && st.dist <= radiusKm * 1.05);
+    const radiusKm = d?.radiusKm || 160;
+    const fitKey = `${center.lat},${center.lon},${radiusKm}`;
+    if (m.fitKey !== fitKey) { fitRadius(m, center, radiusKm); m.fitKey = fitKey; }
+    rangeRings(m, center, radiusKm, Math.round(radiusKm / (station().units === 'mi' ? 1.609344 : 1)));
 
-    ctx.save();
-    ctx.beginPath(); ctx.arc(cx, cy, R + 6, 0, 2 * Math.PI); ctx.clip();
+    const list = aprsVisible().filter(st => !aprs.cat || st.cat === aprs.cat);
     if ($('#aprsTracks').checked) {
-      ctx.lineWidth = 2;
-      ctx.globalAlpha = 0.5;
       for (const st of list) {
         if (st.track.length < 2) continue;
-        ctx.strokeStyle = aprsColor(st.cat);
-        ctx.beginPath();
-        st.track.forEach(([lat, lon], i) => { const [x, y] = P(lat, lon); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
-        ctx.stroke();
+        L.polyline(st.track.map(([lat, lon]) => [lat, lon]), { color: aprsColor(st.cat), weight: 2, opacity: 0.55, interactive: false }).addTo(m.group);
       }
-      ctx.globalAlpha = 1;
     }
-
     const labels = $('#aprsLabels').checked;
-    const placed = []; // label boxes already drawn, to skip overlapping ones
-    ctx.font = '11px system-ui, sans-serif';
     for (const st of list) {
-      const [x, y] = P(st.lat, st.lon);
       const c = aprsColor(st.cat);
       const key = `${st.kind}:${st.name}`;
-      ctx.lineWidth = 1.5;
-      ctx.strokeStyle = css('--card');
-      ctx.fillStyle = c;
-      ctx.beginPath();
-      if (st.cat === 'object') {
-        ctx.moveTo(x, y - 5.5); ctx.lineTo(x + 5.5, y); ctx.lineTo(x, y + 5.5); ctx.lineTo(x - 5.5, y); ctx.closePath();
-        ctx.fillStyle = css('--card'); ctx.strokeStyle = c; ctx.fill(); ctx.stroke();
-      } else {
-        ctx.arc(x, y, 5, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
-      }
-      if (st.speed > 3 && st.course !== undefined) {
-        const a = (st.course - 90) * RAD;
-        ctx.strokeStyle = c;
-        ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(x + 6 * Math.cos(a), y + 6 * Math.sin(a)); ctx.lineTo(x + 13 * Math.cos(a), y + 13 * Math.sin(a)); ctx.stroke();
-      }
-      if (key === aprs.highlight) {
-        ctx.strokeStyle = css('--text');
-        ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(x, y, 10, 0, 2 * Math.PI); ctx.stroke();
-      }
-      const box = { x: x + 7, y: y - 7, w: ctx.measureText(st.name).width + 2, h: 14 };
-      const free = !placed.some(b => box.x < b.x + b.w && b.x < box.x + box.w && box.y < b.y + b.h && b.y < box.y + box.h);
-      if (labels && free) {
-        placed.push(box);
-        ctx.lineWidth = 3;
-        ctx.strokeStyle = css('--card-2');
-        ctx.fillStyle = css('--text-2');
-        ctx.strokeText(st.name, x + 8, y + 4);
-        ctx.fillText(st.name, x + 8, y + 4);
-      }
+      const moving = st.speed > 3 && st.course !== undefined;
+      const marker = st.cat === 'object' ? shapeMarker(st, 'diamond', c)
+        : moving ? shapeMarker(st, 'arrow', c, st.course)
+          : dot(st, c);
       const via = st.path?.digis?.length ? `via ${st.path.digis.join(', ')}` : st.path?.internet ? 'via internet' : 'direct to iGate';
-      dots.push({
-        x, y,
-        html: `<b class="mono">${esc(st.name)}</b> <span class="k">${esc(st.kind === 'station' ? symbolName(st) : st.kind)}</span>` +
+      marker.bindTooltip(`<b class="mono">${esc(st.name)}</b> <span class="k">${esc(st.kind === 'station' ? symbolName(st) : st.kind)}</span>` +
           tipRow('Heard', `${agoShort(st.lastHeard)} ago`) +
           tipRow('Distance', `${fmtDist(st.dist)} ${compass(st.bearing)}`) +
           (st.speed > 3 ? tipRow('Moving', `${fmtSpeed(st.speed)} ${st.course !== undefined ? compass(st.course) : ''}`) : '') +
           (st.alt ? tipRow('Altitude', fmtAlt(st.alt)) : '') +
           (st.wx?.tempF != null ? tipRow('Temperature', fmtTemp(st.wx.tempF)) : '') +
           tipRow('Path', esc(`${via}${st.path?.igate ? ` · iGate ${st.path.igate}` : ''}`)) +
-          (st.comment ? `<div class="k">${esc(st.comment)}</div>` : ''),
-        onClick: () => focusAprsRow(key),
-      });
+          (st.comment ? `<div class="k">${esc(st.comment)}</div>` : ''), TIP)
+        .on('click', () => focusAprsRow(key))
+        .addTo(m.group);
+      if (key === aprs.highlight) highlightRing(st).addTo(m.group);
+      if (labels) addLabel(m, st, st.name);
     }
-    ctx.restore();
-    drawQth(ctx, cx, cy);
+    qthMarker(center, `<b class="mono">${esc(station().callsign || 'Your QTH')}</b>`).addTo(m.group);
+    declutter(m);
 
     $('#aprsLegend').innerHTML = APRS_CATS.map(([k, l]) => legendKey(k === 'object'
       ? `border:2px solid ${aprsColor(k)};transform:rotate(45deg) scale(.8)`
       : `background:${aprsColor(k)};border-radius:50%`, l)).join('') +
+      legendKey(`background:${aprsColor('mobile')};clip-path:polygon(50% 0,100% 100%,0 100%)`, 'Moving (points along course)') +
       legendKey(`border:2px solid ${css('--text')};border-radius:50%`, 'You');
   }
 
@@ -1403,29 +1409,27 @@
   }
 
   function drawPotaMap(rows = potaVisible().filter(s => !pota.band || s.band === pota.band)) {
+    const el = $('#potaMap');
+    if (!el.offsetWidth) return;
+    const home = () => maps.pota.map.setView([30, -20], el.offsetWidth < 520 ? 0 : 1);
+    const m = makeMap('pota', el, { world: true, night: true, home });
+    if (!m.fitKey) { home(); m.fitKey = 'world'; }
+    m.night.refresh();
+    m.group.clearLayers();
     const here = gridToLatLon(station().grid);
-    const res = drawWorld($('#potaMap'), (ctx, X, Y, dots) => {
-      for (const s of rows) {
-        if (s.lat === null || s.lon === null) continue;
-        const x = X(s.lon), y = Y(s.lat), c = potaColor(s.group);
-        ctx.lineWidth = 1.5;
-        ctx.strokeStyle = isQrt(s) ? c : css('--card');
-        ctx.fillStyle = isQrt(s) ? css('--card') : c;
-        ctx.beginPath(); ctx.arc(x, y, 4, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
-        dots.push({
-          x, y,
-          html: `<b class="mono">${esc(s.activator)}</b> <span class="k">${esc(s.reference)}</span><br>${esc(s.park)}` +
-            tipRow('Frequency', `${s.freq ?? '—'} kHz ${esc(s.mode)}`) +
-            (s.dist !== null ? tipRow('Distance', `${fmtDist(s.dist)} ${compass(s.bearing)}`) : '') +
-            tipRow('Spotted', `${agoShort(Date.parse(s.time))} ago`) +
-            (s.comments ? `<div class="k">${esc(s.comments)}</div>` : ''),
-          onClick: () => focusRow('#potaTable', `tr[data-ref="${CSS.escape(s.reference)}"]`),
-        });
-      }
-      if (here) drawQth(ctx, X(here.lon), Y(here.lat));
-    });
-    if (!res) return;
-    $('#potaLegend').innerHTML = nightLegend(res.night) +
+    for (const s of rows) {
+      if (s.lat === null || s.lon === null) continue;
+      dot(s, potaColor(s.group), { radius: 4.5, hollow: isQrt(s) })
+        .bindTooltip(`<b class="mono">${esc(s.activator)}</b> <span class="k">${esc(s.reference)}</span><br>${esc(s.park)}` +
+          tipRow('Frequency', `${s.freq ?? '—'} kHz ${esc(s.mode)}`) +
+          (s.dist !== null ? tipRow('Distance', `${fmtDist(s.dist)} ${compass(s.bearing)}`) : '') +
+          tipRow('Spotted', `${agoShort(Date.parse(s.time))} ago`) +
+          (s.comments ? `<div class="k">${esc(s.comments)}</div>` : ''), TIP)
+        .on('click', () => focusRow('#potaTable', `tr[data-ref="${CSS.escape(s.reference)}"]`))
+        .addTo(m.group);
+    }
+    if (here) qthMarker(here, `<b class="mono">${esc(station().callsign || 'Your QTH')}</b>`).addTo(m.group);
+    $('#potaLegend').innerHTML = nightLegend() +
       legendKey(`background:${potaColor('CW')};border-radius:50%`, 'CW') +
       legendKey(`background:${potaColor('SSB')};border-radius:50%`, 'Phone') +
       legendKey(`background:${potaColor('DIGI')};border-radius:50%`, 'Digital') +
@@ -1724,30 +1728,33 @@
   function drawLookupMap() {
     const r = look.result;
     const there = lookupPos(r), here = gridToLatLon(station().grid);
-    if ($('#lookupPathCard').hidden || !there || !here) return;
-    const res = drawWorld($('#lookupMap'), (ctx, X, Y, dots) => {
-      ctx.strokeStyle = css('--series-1');
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      let prev = null;
-      for (const p of greatCircle(here, there)) {
-        if (prev && Math.abs(p.lon - prev.lon) > 180) ctx.moveTo(X(p.lon), Y(p.lat));
-        else if (prev) ctx.lineTo(X(p.lon), Y(p.lat));
-        else ctx.moveTo(X(p.lon), Y(p.lat));
-        prev = p;
+    const el = $('#lookupMap');
+    if ($('#lookupPathCard').hidden || !there || !here || !el.offsetWidth) return;
+    // Unwrap the great circle so it's drawn as one line even across the antimeridian.
+    const path = [];
+    for (const p of greatCircle(here, there)) {
+      let lon = p.lon;
+      if (path.length) {
+        const prev = path[path.length - 1][1];
+        while (lon - prev > 180) lon -= 360;
+        while (lon - prev < -180) lon += 360;
       }
-      ctx.stroke();
-      const x = X(there.lon), y = Y(there.lat);
-      ctx.fillStyle = css('--series-2');
-      ctx.strokeStyle = css('--card');
-      ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(x, y, 6, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
-      dots.push({ x, y, html: `<b class="mono">${esc(r.call)}</b><br>${esc(titleCase(r.name))}` });
-      drawQth(ctx, X(here.lon), Y(here.lat));
-      dots.push({ x: X(here.lon), y: Y(here.lat), html: `<b class="mono">${esc(station().callsign || 'Your QTH')}</b>` });
-    });
-    if (!res) return;
-    $('#lookupLegend').innerHTML = nightLegend(res.night) +
+      path.push([p.lat, lon]);
+    }
+    const fit = () => maps.lookup.map.fitBounds(L.latLngBounds(path), { padding: [30, 30], maxZoom: 9 });
+    const m = makeMap('lookup', el, { world: true, night: true, home: fit });
+    m.night.refresh();
+    m.group.clearLayers();
+    L.polyline(path, { color: css('--series-1'), weight: 2.5, interactive: false }).addTo(m.group);
+    const end = path[path.length - 1];
+    dot({ lat: end[0], lon: end[1] }, css('--series-2'), { radius: 6 })
+      .bindTooltip(`<b class="mono">${esc(r.call)}</b><br>${esc(titleCase(r.name))}`, TIP)
+      .addTo(m.group);
+    qthMarker(here, `<b class="mono">${esc(station().callsign || 'Your QTH')}</b>`).addTo(m.group);
+    const fitKey = `${r.call}|${station().grid}`;
+    if (m.fitKey !== fitKey) { fit(); m.fitKey = fitKey; }
+
+    $('#lookupLegend').innerHTML = nightLegend() +
       legendKey(`border:2px solid ${css('--text')};border-radius:50%`, 'Your QTH') +
       legendKey(`background:${css('--series-2')};border-radius:50%`, r.call) +
       legendKey(`height:0;border-top:2px solid ${css('--series-1')};border-radius:0`, 'Short path');
@@ -1847,7 +1854,10 @@
     try { state.cycle = await api('api/cycle'); renderCycle(); } catch (e) { console.warn(e); renderCycle(); }
   }
   async function loadLand() {
-    try { state.land = decodeLand(await api('land-110m.json')); redrawVisible(); } catch (e) { console.warn(e); }
+    try {
+      state.land = decodeLand(await api('land-110m.json'));
+      for (const m of Object.values(maps)) m.plain.refill();
+    } catch (e) { console.warn(e); }
   }
 
   // ------------------------------------------------------------ boot
@@ -1857,7 +1867,7 @@
     setInterval(tickClocks, 1000);
     bindSettings();
     bindMapTabs();
-    for (const id of ['#grayline', '#rptMap', '#aprsMap', '#potaMap', '#skyPlot', '#lookupMap']) bindCanvasHover($(id));
+    bindCanvasHover($('#skyPlot'));
 
     $('#potaBandChips').addEventListener('click', e => {
       const b = e.target.closest('[data-band]');
@@ -1905,7 +1915,6 @@
     aprsSince.value = storeGet('hamdash.aprsSince') || '60';
     aprsSince.addEventListener('change', () => { storeSet('hamdash.aprsSince', aprsSince.value); renderAprs(); });
     $('#aprsSearch').addEventListener('input', renderAprs);
-    $('#aprsZoom').addEventListener('change', () => { storeSet(`hamdash.aprsZoom.${station().units}`, $('#aprsZoom').value); drawAprsMap(); });
     for (const id of ['aprsTracks', 'aprsLabels']) {
       const box = $(`#${id}`);
       box.checked = storeGet(`hamdash.${id}`) !== 'false';

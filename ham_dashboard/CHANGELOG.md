@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.7.0
+
+- **Zoomable maps**: the gray line, Repeaters, APRS, POTA and Lookup maps can be
+  zoomed and panned (scroll wheel after clicking the map, pinch on phones, or the
+  + and − buttons). A ⌂ button resets the view.
+- **Map layers**: pick Dark, Streets, Satellite (US), Topo (US) or Plain on each
+  map; the choice is remembered per map. Day/night shading is an overlay you can
+  turn off, and now lines up exactly at every zoom.
+- The APRS "Show within" picker is replaced by real zoom.
+- Maps use Leaflet 1.9.4 (BSD license, included), OpenStreetMap tiles and USGS
+  National Map imagery.
+
 ## 0.6.0
 
 - **MQTT entities**: when the Mosquitto broker app is installed, the sensors are

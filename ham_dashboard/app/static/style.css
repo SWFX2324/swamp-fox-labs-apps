@@ -440,3 +440,53 @@ table.aprs-table td:last-child .sub { white-space: normal; max-width: 260px; }
 .hour { font-size: 11px; font-family: var(--mono); padding: 2px 6px; border-radius: 5px; background: var(--card); color: var(--text-2); }
 .hour.thunder { background: color-mix(in srgb, var(--warning) 30%, transparent); color: var(--text); font-weight: 600; }
 .storm-alerts { margin-top: 12px; }
+
+/* ------------------------------------------------------------ Leaflet maps */
+.lmap { width: 100%; background: var(--ocean); font: inherit; }
+.lmap.world { aspect-ratio: 2 / 1; min-height: 240px; }
+.lmap.local { aspect-ratio: 1 / 1; max-height: 75vh; }
+.lmap.aprs { aspect-ratio: 4 / 3; max-height: 75vh; }
+@media (max-width: 600px) {
+  .lmap.world { aspect-ratio: 4 / 3; }
+  .lmap.aprs { aspect-ratio: 1 / 1; }
+}
+/* OpenStreetMap tiles turned into a dark map. */
+.tiles-dark { filter: invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.85) saturate(0.6); }
+.lmap.map-plain { background: var(--ocean); }
+
+.lmap .leaflet-bar a, .lmap .leaflet-control-layers {
+  background: var(--card); color: var(--text); border-color: var(--border);
+}
+.lmap .leaflet-bar { border: 1px solid var(--border); box-shadow: 0 1px 4px rgb(0 0 0 / .25); }
+.lmap .leaflet-bar a:hover { background: var(--card-2); color: var(--text); }
+.lmap .leaflet-control-layers { border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 1px 4px rgb(0 0 0 / .25); }
+.lmap .leaflet-control-layers-expanded { padding: 8px 10px; font-size: 13px; }
+.lmap .leaflet-control-layers-separator { border-top-color: var(--border); }
+.lmap .leaflet-control-attribution {
+  background: color-mix(in srgb, var(--card) 85%, transparent); color: var(--muted); font-size: 10px;
+}
+.lmap .leaflet-control-attribution a { color: var(--text-2); }
+.lmap a.map-home { font-size: 17px; line-height: 30px; text-decoration: none; }
+
+.leaflet-tooltip.map-tip {
+  background: var(--card); color: var(--text); border: 1px solid var(--border);
+  border-radius: 8px; box-shadow: 0 4px 16px rgb(0 0 0 / .18);
+  padding: 7px 10px; font-size: 12px; max-width: 280px; white-space: normal; width: max-content;
+}
+.leaflet-tooltip.map-tip .row { display: flex; justify-content: space-between; gap: 14px; }
+.leaflet-tooltip.map-tip .k { color: var(--text-2); }
+.leaflet-tooltip-top.map-tip::before { border-top-color: var(--border); }
+
+.map-label {
+  color: var(--text); font-size: 11px; white-space: nowrap; pointer-events: none;
+  text-shadow: 0 0 3px var(--card), 0 0 3px var(--card), 0 0 2px var(--card);
+}
+.ring-label { color: var(--text-2); font-size: 11px; white-space: nowrap; text-shadow: 0 0 3px var(--card), 0 0 3px var(--card); }
+.map-shape { display: grid; place-items: center; }
+.map-arrow {
+  width: 0; height: 0;
+  border-left: 6px solid transparent; border-right: 6px solid transparent; border-bottom: 14px solid var(--c);
+  filter: drop-shadow(0 0 1.5px var(--card));
+}
+.map-diamond { width: 10px; height: 10px; border: 2px solid var(--c); background: var(--card); transform: rotate(45deg); }
+.map-tri { width: 13px; height: 12px; background: var(--c); clip-path: polygon(50% 0, 100% 100%, 0 100%); filter: drop-shadow(0 0 1px var(--card)); }

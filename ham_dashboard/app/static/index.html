@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Ham Radio Dashboard</title>
+  <link rel="stylesheet" href="lib/leaflet/leaflet.css">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -91,7 +92,7 @@
         </div>
       </div>
       <div class="map-panel" id="panel-grayline">
-        <div class="map-wrap"><canvas id="grayline" aria-label="World map showing day, night and the gray line"></canvas></div>
+        <div class="map-wrap"><div id="grayline" class="lmap world" role="region" aria-label="World map showing day, night and the gray line"></div></div>
         <div class="map-legend" id="graylineLegend"></div>
         <div class="sun-times" id="sunTimes"></div>
       </div>
@@ -187,7 +188,7 @@
       <div class="card-head">
         <h2 id="h-rptmap">Repeaters near <span class="mono" id="rptGrid"></span></h2>
       </div>
-      <div class="map-wrap local"><canvas id="rptMap" aria-label="Map of nearby repeaters around your location"></canvas></div>
+      <div class="map-wrap local"><div id="rptMap" class="lmap local" role="region" aria-label="Map of nearby repeaters around your location"></div></div>
       <div class="map-legend" id="rptLegend"></div>
     </section>
 
@@ -223,11 +224,10 @@
         <span class="meta" id="aprsStatus"></span>
       </div>
       <div class="filter-row map-controls">
-        <label>Show within <select id="aprsZoom"></select></label>
         <label><input type="checkbox" id="aprsTracks" checked> Tracks</label>
         <label><input type="checkbox" id="aprsLabels" checked> Labels</label>
       </div>
-      <div class="map-wrap local aprs"><canvas id="aprsMap" aria-label="Map of APRS stations heard near you"></canvas></div>
+      <div class="map-wrap local aprs"><div id="aprsMap" class="lmap aprs" role="region" aria-label="Map of APRS stations heard near you"></div></div>
       <div class="map-legend" id="aprsLegend"></div>
       <p class="note" id="aprsNote"></p>
     </section>
@@ -267,7 +267,7 @@
         <h2 id="h-potamap">Parks on the Air</h2>
         <span class="meta" id="potaStatus"></span>
       </div>
-      <div class="map-wrap"><canvas id="potaMap" aria-label="World map of POTA activators on the air"></canvas></div>
+      <div class="map-wrap"><div id="potaMap" class="lmap world" role="region" aria-label="World map of POTA activators on the air"></div></div>
       <div class="map-legend" id="potaLegend"></div>
     </section>
 
@@ -347,7 +347,7 @@
       <div class="card-head">
         <h2 id="h-path">Path from your QTH</h2>
       </div>
-      <div class="map-wrap"><canvas id="lookupMap" aria-label="Great-circle path from your QTH to the station"></canvas></div>
+      <div class="map-wrap"><div id="lookupMap" class="lmap world" role="region" aria-label="Great-circle path from your QTH to the station"></div></div>
       <div class="map-legend" id="lookupLegend"></div>
       <div class="sun-times" id="lookupPath"></div>
     </section>
@@ -395,6 +395,7 @@
     </form>
   </dialog>
 
+  <script src="lib/leaflet/leaflet.js"></script>
   <script src="hamcore.js"></script>
   <script src="app.js"></script>
 </body>

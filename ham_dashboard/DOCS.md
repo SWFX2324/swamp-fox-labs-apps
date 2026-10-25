@@ -6,6 +6,27 @@ tabs: **Space weather**, **Repeaters**, **APRS**, **POTA**, **Satellites** and
 **Callsign lookup**. It also publishes its data to Home Assistant as sensors and
 fires events you can use in automations (see [Home Assistant sensors and alerts](#home-assistant-sensors-and-alerts)).
 
+## Maps
+
+The gray line, Repeaters, APRS, POTA and Lookup maps can be zoomed and panned.
+Click a map first to zoom with the scroll wheel (so scrolling the page never zooms
+a map by accident), pinch on a phone, or use the + and − buttons. The ⌂ button
+resets the view.
+
+The layers button (top right) picks the base map, remembered per map:
+
+- **Dark** and **Streets** – [OpenStreetMap](https://www.openstreetmap.org/copyright).
+  Dark is the same map with a dark filter.
+- **Satellite (US)** and **Topo (US)** – [USGS The National Map](https://www.usgs.gov/programs/national-geospatial-program/national-map),
+  public domain. Detailed across the US; outside the US there's imagery only when
+  zoomed far out.
+- **Plain (offline)** – the simple land outline bundled with the add-on, for when
+  you'd rather not load map tiles.
+
+World maps also have a **Day / night** overlay you can switch off. Map tiles are
+loaded by your browser straight from OpenStreetMap or USGS, which means those
+services see which area you're viewing.
+
 ## Space weather
 
 - **Solar & geomagnetic conditions** – SFI, sunspot number, A and K index, X-ray flux,
