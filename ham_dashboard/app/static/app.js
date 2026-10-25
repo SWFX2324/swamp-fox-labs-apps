@@ -369,18 +369,26 @@
     return polys;
   }
 
-  let mapDots = [];
+  const canvasDots = new WeakMap();
 
-  function drawGrayline() {
-    const canvas = $('#grayline');
-    const w = canvas.clientWidth;
-    if (!w) return;
-    const h = w / 2;
+  // Size a canvas to its CSS box at device resolution; returns a 2D context.
+  function fitCanvas(canvas, w, h) {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     canvas.width = Math.round(w * dpr);
     canvas.height = Math.round(h * dpr);
     const ctx = canvas.getContext('2d');
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return ctx;
+  }
+
+  // Equirectangular world map with land, live night/gray-line shading and the
+  // subsolar point. `overlay(ctx, X, Y, dots)` draws extra markers and pushes
+  // hover targets ({x, y, html}) into `dots`.
+  function drawWorld(canvas, overlay) {
+    const w = canvas.clientWidth;
+    if (!w) return null;
+    const h = w / 2;
+    const ctx = fitCanvas(canvas, w, h);
     const X = lon => ((lon + 180) / 360) * w;
     const Y = lat => ((90 - lat) / 180) * h;
 
@@ -416,8 +424,7 @@
     }
 
     // Night shading at low resolution, scaled up smoothly.
-    const now = new Date();
-    const sun = sunPosition(now);
+    const sun = sunPosition(new Date());
     const ow = 720, oh = 360;
     const off = document.createElement('canvas');
     off.width = ow; off.height = oh;
@@ -446,13 +453,44 @@
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(off, 0, 0, w, h);
 
-    mapDots = [];
+    const dots = [];
+    const sx = X(sun.lon), sy = Y(sun.lat);
+    ctx.fillStyle = '#fab219';
+    ctx.strokeStyle = '#8a5a00';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(sx, sy, 7, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
+    dots.push({ x: sx, y: sy, html: `<b>Sun overhead</b>${tipRow('Lat', sun.lat.toFixed(1) + '°')}${tipRow('Lon', sun.lon.toFixed(1) + '°')}` });
+
+    overlay?.(ctx, X, Y, dots);
+    canvasDots.set(canvas, dots);
+    return { sun, night: [nr, ng, nb] };
+  }
+
+  // Ringed dot marking the operator's QTH.
+  function drawQth(ctx, x, y) {
+    ctx.strokeStyle = css('--card');
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(x, y, 7, 0, 2 * Math.PI); ctx.stroke();
+    ctx.strokeStyle = css('--text');
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(x, y, 7, 0, 2 * Math.PI); ctx.stroke();
+    ctx.fillStyle = css('--text');
+    ctx.beginPath(); ctx.arc(x, y, 2.5, 0, 2 * Math.PI); ctx.fill();
+  }
+
+  const legendKey = (swatch, label) => `<span><span class="sw" style="${swatch}"></span>${esc(label)}</span>`;
+  const nightLegend = night => legendKey(`background:rgb(${night.join(' ')} / .6)`, 'Night') +
+    legendKey('background:rgb(214 160 60 / .55)', 'Gray line (civil twilight)') +
+    legendKey('background:#fab219;border-radius:50%', 'Sun overhead');
+
+  function drawGrayline() {
     const st = station();
     const pos = gridToLatLon(st.grid);
-
-    // PSKReporter receivers.
     const reports = state.psk?.reports || [];
-    if (reports.length) {
+    const iono = nearestIonosonde(pos);
+
+    const res = drawWorld($('#grayline'), (ctx, X, Y, dots) => {
+      // PSKReporter receivers.
       ctx.fillStyle = css('--series-2');
       ctx.strokeStyle = css('--card');
       ctx.lineWidth = 1.5;
@@ -464,54 +502,32 @@
         if (!p) continue;
         const x = X(p.lon), y = Y(p.lat);
         ctx.beginPath(); ctx.arc(x, y, 4, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
-        mapDots.push({ x, y, html: `<b class="mono">${esc(r.rx)}</b><br>${esc(r.rxCountry || '')}${tipRow('Band', bandName(r.freq) || '—')}${tipRow('Mode', esc(r.mode))}${tipRow('SNR', `${r.snr ?? '—'} dB`)}${pos ? tipRow('Distance', fmtDist(distanceKm(pos, p))) : ''}` });
+        dots.push({ x, y, html: `<b class="mono">${esc(r.rx)}</b><br>${esc(r.rxCountry || '')}${tipRow('Band', bandName(r.freq) || '—')}${tipRow('Mode', esc(r.mode))}${tipRow('SNR', `${r.snr ?? '—'} dB`)}${pos ? tipRow('Distance', fmtDist(distanceKm(pos, p))) : ''}` });
       }
-    }
 
-    // Ionosonde used for the band estimate.
-    const iono = nearestIonosonde(pos);
-    if (iono) {
-      const x = X(iono.lon), y = Y(iono.lat);
-      ctx.fillStyle = css('--series-1');
-      ctx.strokeStyle = css('--card');
-      ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.moveTo(x, y - 6); ctx.lineTo(x + 5.5, y + 4); ctx.lineTo(x - 5.5, y + 4); ctx.closePath(); ctx.fill(); ctx.stroke();
-      mapDots.push({ x, y, html: `<b>${esc(iono.name)}</b> ionosonde${tipRow('MUF(3000)', `${iono.mufd.toFixed(1)} MHz`)}${tipRow('foF2', `${iono.fof2?.toFixed(1) ?? '—'} MHz`)}${tipRow('Measured', ago(iono.time))}` });
-    }
+      // Ionosonde used for the band estimate.
+      if (iono) {
+        const x = X(iono.lon), y = Y(iono.lat);
+        ctx.fillStyle = css('--series-1');
+        ctx.strokeStyle = css('--card');
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(x, y - 6); ctx.lineTo(x + 5.5, y + 4); ctx.lineTo(x - 5.5, y + 4); ctx.closePath(); ctx.fill(); ctx.stroke();
+        dots.push({ x, y, html: `<b>${esc(iono.name)}</b> ionosonde${tipRow('MUF(3000)', `${iono.mufd.toFixed(1)} MHz`)}${tipRow('foF2', `${iono.fof2?.toFixed(1) ?? '—'} MHz`)}${tipRow('Measured', ago(iono.time))}` });
+      }
 
-    // Subsolar point.
-    {
-      const x = X(sun.lon), y = Y(sun.lat);
-      ctx.fillStyle = '#fab219';
-      ctx.strokeStyle = '#8a5a00';
-      ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.arc(x, y, 7, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
-      mapDots.push({ x, y, html: `<b>Sun overhead</b>${tipRow('Lat', sun.lat.toFixed(1) + '°')}${tipRow('Lon', sun.lon.toFixed(1) + '°')}` });
-    }
+      if (pos) {
+        drawQth(ctx, X(pos.lon), Y(pos.lat));
+        dots.push({ x: X(pos.lon), y: Y(pos.lat), html: `<b class="mono">${esc(st.callsign || 'Your QTH')}</b>${tipRow('Grid', esc(st.grid))}` });
+      }
+    });
+    if (!res) return;
 
-    // QTH.
-    if (pos) {
-      const x = X(pos.lon), y = Y(pos.lat);
-      ctx.strokeStyle = css('--card');
-      ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.arc(x, y, 7, 0, 2 * Math.PI); ctx.stroke();
-      ctx.strokeStyle = css('--text');
-      ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(x, y, 7, 0, 2 * Math.PI); ctx.stroke();
-      ctx.fillStyle = css('--text');
-      ctx.beginPath(); ctx.arc(x, y, 2.5, 0, 2 * Math.PI); ctx.fill();
-      mapDots.push({ x, y, html: `<b class="mono">${esc(st.callsign || 'Your QTH')}</b>${tipRow('Grid', esc(st.grid))}` });
-    }
+    $('#graylineLegend').innerHTML = nightLegend(res.night) +
+      (pos ? legendKey(`border:2px solid ${css('--text')};border-radius:50%`, 'Your QTH') : '') +
+      (iono ? legendKey(`background:${css('--series-1')};clip-path:polygon(50% 0,100% 100%,0 100%)`, 'Ionosonde used') : '') +
+      (reports.length ? legendKey(`background:${css('--series-2')};border-radius:50%`, 'Stations hearing you (PSKReporter)') : '');
 
-    $('#graylineLegend').innerHTML = `
-      <span><span class="sw" style="background:rgb(${nr} ${ng} ${nb} / .6)"></span>Night</span>
-      <span><span class="sw" style="background:rgb(214 160 60 / .55)"></span>Gray line (civil twilight)</span>
-      <span><span class="sw dot" style="background:#fab219"></span>Sun overhead</span>
-      ${pos ? `<span><span class="sw dot" style="border:2px solid ${css('--text')}"></span>Your QTH</span>` : ''}
-      ${iono ? `<span><span class="sw" style="background:${css('--series-1')};clip-path:polygon(50% 0,100% 100%,0 100%)"></span>Ionosonde used</span>` : ''}
-      ${reports.length ? `<span><span class="sw dot" style="background:${css('--series-2')}"></span>Stations hearing you (PSKReporter)</span>` : ''}`;
-
-    renderSunTimes(pos, sun);
+    renderSunTimes(pos, res.sun);
   }
 
   function renderSunTimes(pos, sun) {
@@ -520,9 +536,8 @@
     const alt = sunAltitude(sun, pos.lat, pos.lon);
     const both = d => (d ? `${localHM(d)}` : '—');
     const sub = d => (d ? `${utcHM(d)} UTC` : 'n/a today');
-    const phase = alt > 0 ? 'Daytime' : alt > -6 ? 'Gray line now!' : alt > -12 ? 'Nautical twilight' : 'Night';
     $('#sunTimes').innerHTML = [
-      tile('Sun at QTH', phase, '', `Elevation ${alt.toFixed(1)}°`),
+      tile('Sun at QTH', sunPhase(alt), '', `Elevation ${alt.toFixed(1)}°`),
       tile('Morning gray line', both(t.dawn), '', t.dawn ? `${utcHM(t.dawn)}–${t.sunrise ? utcHM(t.sunrise) : '?'} UTC` : 'n/a today'),
       tile('Sunrise', both(t.sunrise), '', sub(t.sunrise)),
       tile('Sunset', both(t.sunset), '', sub(t.sunset)),
@@ -530,18 +545,23 @@
     ].join('');
   }
 
-  function bindMapHover() {
-    const canvas = $('#grayline');
+  const sunPhase = alt => (alt > 0 ? 'Daytime' : alt > -6 ? 'Gray line now!' : alt > -12 ? 'Nautical twilight' : 'Night');
+
+  // Tooltips for canvas markers: the nearest registered dot within 12px.
+  function bindCanvasHover(canvas) {
     canvas.addEventListener('mousemove', e => {
       const r = canvas.getBoundingClientRect();
       const x = e.clientX - r.left, y = e.clientY - r.top;
       let best = null, bd = 12;
-      for (const d of mapDots) {
+      for (const d of canvasDots.get(canvas) || []) {
         const dd = Math.hypot(d.x - x, d.y - y);
         if (dd < bd) { bd = dd; best = d; }
       }
       if (best) showTip(best.html, e.clientX, e.clientY); else hideTip();
+      canvas.style.cursor = best?.onClick ? 'pointer' : '';
+      canvas._hoverDot = best;
     });
+    canvas.addEventListener('click', () => canvas._hoverDot?.onClick?.());
     canvas.addEventListener('mouseleave', hideTip);
   }
 
@@ -760,9 +780,9 @@
       rows.map(s => `<tr class="${Date.parse(s.time) > fresh ? 'fresh' : ''}">
         <td class="mono">${utcHM(new Date(s.time))}</td>
         <td class="mono num">${s.freq.toFixed(1)}</td>
-        <td class="mono call" title="${esc(s.dxCont || '')}">${esc(s.dx)}</td>
+        <td class="call" title="${esc(s.dxCont || '')}">${callLink(s.dx)}</td>
         <td><span class="tag">${esc(s.mode)}</span></td>
-        <td class="mono">${esc(s.spotter)}${s.count > 1 ? `<span class="count">+${s.count - 1}</span>` : ''}</td>
+        <td>${callLink(s.spotter)}${s.count > 1 ? `<span class="count">+${s.count - 1}</span>` : ''}</td>
         <td class="comment">${esc(s.comment)}</td></tr>`).join('')
     }</tbody>`;
   }
@@ -803,7 +823,7 @@
     table.innerHTML = `<thead><tr><th>UTC</th><th>Heard by</th><th>Band</th><th>Mode</th><th class="num">SNR</th><th class="num">Distance</th></tr></thead><tbody>${
       reports.slice(0, 200).map(r => `<tr>
         <td class="mono">${utcHM(new Date(r.time * 1000))}</td>
-        <td class="mono call" title="${esc(r.rxCountry || '')} ${esc(r.rxGrid || '')}">${esc(r.rx)}</td>
+        <td class="call" title="${esc(r.rxCountry || '')} ${esc(r.rxGrid || '')}">${callLink(r.rx)}</td>
         <td>${esc(r.band || '—')}</td><td><span class="tag">${esc(r.mode)}</span></td>
         <td class="mono num">${r.snr ?? '—'}</td><td class="mono num">${fmtDist(r.dist)}</td></tr>`).join('')
     }</tbody>`;
@@ -825,6 +845,392 @@
       }).join('');
     }
     $('#forecastText').textContent = state.solar?.forecast || 'Unavailable';
+  }
+
+  // ------------------------------------------------------------ views
+
+  const VIEWS = ['weather', 'repeaters', 'lookup'];
+  let currentView = 'weather';
+
+  function showView(name) {
+    if (!VIEWS.includes(name)) name = 'weather';
+    currentView = name;
+    for (const v of VIEWS) $(`#view-${v}`).hidden = v !== name;
+    for (const b of document.querySelectorAll('#viewTabs [data-view]')) b.setAttribute('aria-selected', b.dataset.view === name);
+    storeSet('hamdash.view', name);
+    if (location.hash.slice(1) !== name) history.replaceState(null, '', `#${name}`);
+    hideTip();
+    redrawVisible();
+    if (name === 'repeaters') loadRepeaters();
+    if (name === 'lookup') renderLookup();
+  }
+
+  // Canvases and charts can only be sized while their view is visible.
+  function redrawVisible() {
+    if (currentView === 'weather') {
+      if (!$('#panel-grayline').hidden) drawGrayline();
+      renderKp(); renderCycle();
+    } else if (currentView === 'repeaters') {
+      drawRepeaterMap();
+    } else {
+      drawLookupMap();
+    }
+  }
+
+  const callLink = c => `<button type="button" class="call-link mono" data-call="${esc(c)}" title="Look up ${esc(c)}">${esc(c)}</button>`;
+
+  const COMPASS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+  const compass = deg => COMPASS[Math.round(deg / 22.5) % 16];
+
+  function bearingDeg(a, b) {
+    const y = Math.sin((b.lon - a.lon) * RAD) * Math.cos(b.lat * RAD);
+    const x = Math.cos(a.lat * RAD) * Math.sin(b.lat * RAD) - Math.sin(a.lat * RAD) * Math.cos(b.lat * RAD) * Math.cos((b.lon - a.lon) * RAD);
+    return (Math.atan2(y, x) / RAD + 360) % 360;
+  }
+
+  // ------------------------------------------------------------ repeaters
+
+  const RPT_BANDS = [['10m', 28, 29.7], ['6m', 50, 54], ['2m', 144, 148], ['1.25m', 219, 225], ['70cm', 420, 450], ['33cm', 902, 928], ['23cm', 1240, 1300]];
+  const rptBand = hz => (RPT_BANDS.find(([, lo, hi]) => hz / 1e6 >= lo && hz / 1e6 <= hi) || ['Other'])[0];
+  const RADII = { mi: [10, 25, 50, 75, 100, 150], km: [15, 40, 80, 120, 160, 240] };
+  const fmtMHz = hz => (hz / 1e6).toFixed(hz % 1000 ? 4 : 3);
+
+  const rpt = { data: null, pos: null, key: '', band: storeGet('hamdash.rptBand') || '', highlight: null, error: null };
+
+  const rptRadiusKm = () => +$('#rptRadius').value * (station().units === 'mi' ? 1.609344 : 1);
+
+  function fillRadiusOptions() {
+    const units = station().units;
+    const saved = +storeGet(`hamdash.rptRadius.${units}`) || (units === 'mi' ? 50 : 80);
+    $('#rptRadius').innerHTML = RADII[units].map(r => `<option value="${r}"${r === saved ? ' selected' : ''}>${r} ${units}</option>`).join('');
+  }
+
+  async function loadRepeaters() {
+    const pos = gridToLatLon(station().grid);
+    $('#rptGrid').textContent = station().grid || 'you';
+    if (!pos) {
+      rpt.data = null;
+      rpt.error = 'Set your grid square (top right) to find nearby repeaters.';
+      renderRepeaters();
+      return;
+    }
+    const radius = rptRadiusKm();
+    const key = `${pos.lat.toFixed(3)},${pos.lon.toFixed(3)},${radius}`;
+    if (key === rpt.key && rpt.data) { renderRepeaters(); return; }
+    rpt.key = key;
+    rpt.error = null;
+    if (!rpt.data) $('#rptTable').innerHTML = '<tbody><tr><td class="empty">Loading repeaters… The first load downloads the HearHam directory and can take a few seconds.</td></tr></tbody>';
+    try {
+      const d = await api(`api/repeaters?lat=${pos.lat.toFixed(4)}&lon=${pos.lon.toFixed(4)}&radius=${radius.toFixed(1)}`);
+      if (rpt.key !== key) return; // a newer request superseded this one
+      rpt.data = d;
+      rpt.pos = pos;
+    } catch (e) {
+      rpt.data = null;
+      rpt.key = '';
+      rpt.error = `Couldn't load repeaters: ${e.message}`;
+    }
+    renderRepeaters();
+  }
+
+  function filteredRepeaters() {
+    if (!rpt.data) return [];
+    const mode = $('#rptMode').value, onAir = $('#rptOnAir').checked;
+    const q = $('#rptSearch').value.trim().toUpperCase();
+    return rpt.data.repeaters.filter(r =>
+      (!rpt.band || rptBand(r.freq) === rpt.band) &&
+      (!mode || r.mode.split('/').includes(mode)) &&
+      (!onAir || r.operational) &&
+      (!q || r.call.includes(q) || r.city.toUpperCase().includes(q)));
+  }
+
+  function toneText(r) {
+    if (r.mode.includes('DMR') && r.encode && +r.encode < 16) return `CC${r.encode}`;
+    if (!r.encode && !r.decode) return 'none';
+    if (r.decode && r.decode !== r.encode) return `${r.encode || 'none'} / ${r.decode}`;
+    return r.encode;
+  }
+
+  const offsetText = r => (r.offset === 0 ? 'simplex' : `${r.offset > 0 ? '+' : '−'}${+(Math.abs(r.offset) / 1e6).toFixed(4)}`);
+
+  function renderRepeaters() {
+    const d = rpt.data;
+    const counts = {};
+    for (const r of d?.repeaters || []) { const b = rptBand(r.freq); counts[b] = (counts[b] || 0) + 1; }
+    const bands = [...RPT_BANDS.map(b => b[0]), 'Other'].filter(b => counts[b] || b === rpt.band);
+    $('#rptBandChips').innerHTML = [['', 'All bands'], ...bands.map(b => [b, b])].map(([v, label]) =>
+      `<button type="button" class="chip" data-band="${v}" aria-pressed="${rpt.band === v}">${label}${v && counts[v] ? `<span class="n">${counts[v]}</span>` : ''}</button>`).join('');
+
+    if (rpt.error || !d) {
+      $('#rptMeta').textContent = '';
+      $('#rptSource').textContent = '';
+      if (rpt.error) $('#rptTable').innerHTML = `<tbody><tr><td class="empty">${esc(rpt.error)}</td></tr></tbody>`;
+      drawRepeaterMap();
+      return;
+    }
+
+    const rows = filteredRepeaters();
+    const units = station().units;
+    $('#rptMeta').textContent = `${rows.length} of ${d.total} within ${$('#rptRadius').value} ${units}` +
+      (d.total > d.repeaters.length ? ` (closest ${d.repeaters.length} loaded)` : '');
+    $('#rptSource').textContent = `Directory downloaded from HearHam ${ago(d.fetched)}.`;
+
+    $('#rptTable').innerHTML = rows.length ? `<thead><tr><th class="num">Output</th><th>Offset</th><th>Tone</th><th>Mode</th><th>Repeater</th><th class="num hide-sm">Distance</th><th class="hide-sm">Status</th><th class="hide-sm">Details</th></tr></thead><tbody>${
+      rows.map(r => {
+        const status = !r.operational ? pill('closed', 'Off air')
+          : r.restriction ? pill('fair', r.restriction.toLowerCase().includes('closed') ? 'Closed access' : r.restriction)
+            : pill('good', 'On air');
+        const net = r.node ? `${r.group || 'Node'} ${r.node}` : r.group;
+        return `<tr data-id="${r.id}" class="${r.operational ? '' : 'off'}">
+          <td class="mono num freq-out">${fmtMHz(r.freq)}</td>
+          <td class="mono" title="Input ${fmtMHz(r.freq + r.offset)} MHz">${offsetText(r)}</td>
+          <td class="mono">${esc(toneText(r))}</td>
+          <td><span class="tag">${esc(r.mode)}</span>${net ? `<div class="sub net">${esc(net)}</div>` : ''}</td>
+          <td>${callLink(r.call)}<div class="sub" title="${esc(r.description)}"><span class="show-sm">${fmtDist(r.dist)} ${compass(r.bearing)} · </span>${esc(r.city)}</div></td>
+          <td class="mono num hide-sm">${fmtDist(r.dist)}<div class="sub">${compass(r.bearing)}</div></td>
+          <td class="hide-sm">${status}</td>
+          <td class="links hide-sm"><a href="https://hearham.com/repeaters/${encodeURIComponent(r.id)}" target="_blank" rel="noopener">HearHam</a><a href="https://www.repeaterbook.com/repeaters/callResult.php?call=${encodeURIComponent(r.call)}" target="_blank" rel="noopener">RepeaterBook</a></td>
+        </tr>`;
+      }).join('')
+    }</tbody>` : '<tbody><tr><td class="empty">No repeaters match these filters. Try a bigger radius or another band.</td></tr></tbody>';
+    drawRepeaterMap();
+  }
+
+  // Local map centred on the QTH with range rings; repeaters at the same site
+  // are fanned out around it so they stay hoverable.
+  function drawRepeaterMap() {
+    const canvas = $('#rptMap');
+    const w = canvas.clientWidth;
+    if (!w) return;
+    const ctx = fitCanvas(canvas, w, w);
+    const cx = w / 2, cy = w / 2, R = w / 2 - 24;
+    const units = station().units;
+    const radiusKm = rptRadiusKm();
+
+    ctx.fillStyle = css('--card-2');
+    ctx.fillRect(0, 0, w, w);
+    ctx.strokeStyle = css('--grid-line');
+    ctx.lineWidth = 1;
+    ctx.fillStyle = css('--muted');
+    ctx.font = '11px system-ui, sans-serif';
+    for (let i = 1; i <= 4; i++) {
+      ctx.beginPath(); ctx.arc(cx, cy, (R * i) / 4, 0, 2 * Math.PI); ctx.stroke();
+      ctx.fillText(`${+((+$('#rptRadius').value * i) / 4).toFixed(1)} ${units}`, cx + 4, cy - (R * i) / 4 + 12);
+    }
+    ctx.beginPath(); ctx.moveTo(cx, cy - R); ctx.lineTo(cx, cy + R); ctx.moveTo(cx - R, cy); ctx.lineTo(cx + R, cy); ctx.stroke();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (const [t, x, y] of [['N', cx, cy - R - 12], ['S', cx, cy + R + 12], ['E', cx + R + 12, cy], ['W', cx - R - 12, cy]]) ctx.fillText(t, x, y);
+    ctx.textAlign = 'start';
+    ctx.textBaseline = 'alphabetic';
+
+    const pos = rpt.pos || gridToLatLon(station().grid);
+    const dots = [];
+    canvasDots.set(canvas, dots);
+    if (!pos) return;
+
+    const kx = 111.32 * Math.cos(pos.lat * RAD), ky = 110.57;
+    const color = { '2m': css('--series-1'), '70cm': css('--series-2') };
+    const other = css('--series-3');
+    const sites = new Map();
+    for (const r of filteredRepeaters()) {
+      const x = cx + (((r.lon - pos.lon) * kx) / radiusKm) * R;
+      const y = cy - (((r.lat - pos.lat) * ky) / radiusKm) * R;
+      const k = `${Math.round(x / 6)},${Math.round(y / 6)}`;
+      if (!sites.has(k)) sites.set(k, { x, y, items: [] });
+      sites.get(k).items.push(r);
+    }
+    for (const s of sites.values()) {
+      const n = s.items.length, spread = n > 1 ? Math.min(4 + n, 10) : 0;
+      s.items.forEach((r, i) => {
+        const a = (2 * Math.PI * i) / n - Math.PI / 2;
+        const x = s.x + spread * Math.cos(a), y = s.y + spread * Math.sin(a);
+        const c = color[rptBand(r.freq)] || other;
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = r.operational ? css('--card') : c;
+        ctx.fillStyle = r.operational ? c : css('--card');
+        ctx.beginPath(); ctx.arc(x, y, 4.5, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
+        if (r.id === rpt.highlight) {
+          ctx.strokeStyle = css('--text');
+          ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.arc(x, y, 9, 0, 2 * Math.PI); ctx.stroke();
+        }
+      });
+      const first = s.items[0];
+      dots.push({
+        x: s.x, y: s.y,
+        html: `<b>${esc(first.city || 'Repeater site')}</b><br><span class="k">${fmtDist(first.dist)} ${compass(first.bearing)}</span>` +
+          s.items.slice(0, 8).map(r => tipRow(`${r.call} ${r.mode}`, `${fmtMHz(r.freq)} ${esc(toneText(r))}`)).join('') +
+          (n > 8 ? `<div class="k">+${n - 8} more</div>` : ''),
+        onClick: () => focusRepeaterRow(first.id),
+      });
+    }
+    drawQth(ctx, cx, cy);
+
+    $('#rptLegend').innerHTML =
+      legendKey(`background:${color['2m']};border-radius:50%`, '2 m') +
+      legendKey(`background:${color['70cm']};border-radius:50%`, '70 cm') +
+      legendKey(`background:${other};border-radius:50%`, 'Other bands') +
+      legendKey(`border:2px solid ${css('--muted')};border-radius:50%`, 'Hollow = off air') +
+      legendKey(`border:2px solid ${css('--text')};border-radius:50%`, 'Your QTH');
+  }
+
+  function focusRepeaterRow(id) {
+    const row = document.querySelector(`#rptTable tr[data-id="${CSS.escape(String(id))}"]`);
+    if (!row) return;
+    row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    row.classList.add('flash');
+    setTimeout(() => row.classList.remove('flash'), 1500);
+  }
+
+  // ------------------------------------------------------------ callsign lookup
+
+  const look = { result: null, loading: null, error: null };
+  const recentCalls = () => { try { return JSON.parse(storeGet('hamdash.recent')) || []; } catch { return []; } };
+  const titleCase = s => (s && s === s.toUpperCase() ? s.toLowerCase().replace(/\b[a-z]/g, c => c.toUpperCase()) : s || '');
+  const LICENSE_CLASS = { E: 'Amateur Extra', EXTRA: 'Amateur Extra', A: 'Advanced', ADVANCED: 'Advanced', G: 'General', GENERAL: 'General', T: 'Technician', TECHNICIAN: 'Technician', N: 'Novice', NOVICE: 'Novice', P: 'Technician Plus' };
+
+  async function lookup(call) {
+    call = String(call || '').trim().toUpperCase();
+    $('#lookupInput').value = call;
+    if (currentView !== 'lookup') showView('lookup');
+    if (!/^[A-Z0-9/]{3,15}$/.test(call)) { look.error = 'Enter a valid callsign.'; look.result = null; renderLookup(); return; }
+    look.loading = call;
+    look.error = null;
+    renderLookup();
+    try {
+      const r = await api(`api/lookup?call=${encodeURIComponent(call)}`);
+      if (look.loading !== call) return;
+      look.result = r;
+      if (!r.notFound) storeSet('hamdash.recent', JSON.stringify([call, ...recentCalls().filter(c => c !== call)].slice(0, 10)));
+    } catch (e) {
+      look.result = null;
+      look.error = `Lookup failed: ${e.message}`;
+    }
+    look.loading = null;
+    renderLookup();
+  }
+
+  const lookupPos = r => (r && r.lat != null && r.lon != null ? { lat: r.lat, lon: r.lon } : gridToLatLon(r?.grid));
+
+  function renderLookup() {
+    const recent = recentCalls();
+    $('#lookupRecent').innerHTML = recent.length
+      ? `<span class="meta">Recent:</span>${recent.map(c => `<button type="button" class="chip mono" data-call="${esc(c)}">${esc(c)}</button>`).join('')}`
+      : '';
+    $('#lookupNote').innerHTML = state.defaults.qrz
+      ? 'Lookups use your QRZ account, with FCC data filling gaps for US calls.'
+      : 'US callsigns are looked up free from FCC data. For worldwide lookups, add your QRZ username and password on the add-on’s Configuration tab. Full QRZ details need a <a href="https://www.qrz.com/page/xml_data.html" target="_blank" rel="noopener">QRZ XML subscription</a>.';
+
+    const out = $('#lookupResult');
+    const r = look.result;
+    $('#lookupPathCard').hidden = true;
+    if (look.loading) { out.innerHTML = `<div class="empty">Looking up ${esc(look.loading)}…</div>`; return; }
+    if (look.error) { out.innerHTML = `<p class="error">${esc(look.error)}</p>`; return; }
+    if (!r) { out.innerHTML = '<div class="empty">Enter a callsign above, or click any callsign in the spots, PSKReporter or repeater lists.</div>'; return; }
+    if (r.notFound) {
+      out.innerHTML = `<div class="empty">No record found for <b class="mono">${esc(r.call)}</b>.${
+        r.qrz ? '' : ' Without a QRZ account, only US callsigns can be looked up.'}</div>${
+        r.warning ? `<p class="error">${esc(r.warning)}</p>` : ''}`;
+      return;
+    }
+
+    const cls = LICENSE_CLASS[String(r.class || '').toUpperCase()] || titleCase(r.class);
+    const qsl = [r.lotw && 'LoTW', r.eqsl && 'eQSL', r.mqsl && 'Direct (mail)'].filter(Boolean).join(', ');
+    const facts = [
+      ['Address', [r.addr1, r.addr2].filter(Boolean).map(titleCase)
+        .map(s => s.replace(/, ([A-Z][a-z]) (\d{5})/, (m, st, zip) => `, ${st.toUpperCase()} ${zip}`)).map(esc).join('<br>')],
+      ['County', esc(r.county)],
+      ['Country', esc(r.country)],
+      ['Grid', r.grid ? `<span class="mono">${esc(r.grid)}</span>` : ''],
+      ['License class', esc(cls)],
+      ['Granted', esc(r.effective)],
+      ['Expires', esc(r.expires)],
+      ['Trustee', r.trustee ? callLink(r.trustee) : ''],
+      ['Previous call', r.previous ? `<span class="mono">${esc(r.previous)}</span>` : ''],
+      ['Aliases', r.aliases ? `<span class="mono">${esc(r.aliases)}</span>` : ''],
+      ['QSL', esc(qsl)],
+      ['QSL manager', esc(r.qslmgr)],
+      ['Zones', [r.dxcc && `DXCC ${r.dxcc}`, r.cqzone && `CQ ${r.cqzone}`, r.ituzone && `ITU ${r.ituzone}`].filter(Boolean).map(esc).join(' · ')],
+      ['Time zone', esc(r.timezone)],
+    ].filter(([, v]) => v);
+
+    out.innerHTML = `
+      <div class="lookup-head">
+        ${r.image ? `<img class="lookup-photo" src="${esc(r.image)}" alt="Photo from QRZ for ${esc(r.call)}" referrerpolicy="no-referrer">` : ''}
+        <div>
+          <div class="lookup-call mono">${esc(r.call)}</div>
+          <div class="lookup-name">${esc(titleCase(r.name))}${r.nickname ? ` “${esc(r.nickname)}”` : ''}</div>
+          <div class="lookup-tags">${cls ? `<span class="tag">${esc(cls)}</span>` : ''}${(r.sources || []).map(s => `<span class="tag">${esc(s)}</span>`).join('')}</div>
+        </div>
+      </div>
+      <dl class="facts">${facts.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join('')}</dl>
+      <div class="lookup-links">
+        <a href="${esc(r.url)}" target="_blank" rel="noopener">QRZ.com page</a>
+        ${r.uls ? `<a href="${esc(r.uls)}" target="_blank" rel="noopener">FCC license record</a>` : ''}
+      </div>
+      ${r.warning ? `<p class="error">QRZ lookup failed (${esc(r.warning)}), so this shows FCC data only.</p>` : ''}`;
+
+    const there = lookupPos(r), here = gridToLatLon(station().grid);
+    if (there && here) {
+      $('#lookupPathCard').hidden = false;
+      const d = distanceKm(here, there), b = bearingDeg(here, there);
+      const alt = sunAltitude(sunPosition(new Date()), there.lat, there.lon);
+      $('#lookupPath').innerHTML = [
+        tile('Distance', fmtDist(d), '', 'Short path'),
+        tile('Beam heading', `${Math.round(b)}°`, '', `${compass(b)} · short path`),
+        tile('Long path', `${Math.round((b + 180) % 360)}°`, '', fmtDist(40075 - d)),
+        tile('Sun at station', sunPhase(alt), '', `Elevation ${alt.toFixed(0)}°`),
+      ].join('');
+      drawLookupMap();
+    }
+  }
+
+  // Points along the great circle from a to b (spherical interpolation).
+  function greatCircle(a, b, n = 160) {
+    const v = p => [Math.cos(p.lat * RAD) * Math.cos(p.lon * RAD), Math.cos(p.lat * RAD) * Math.sin(p.lon * RAD), Math.sin(p.lat * RAD)];
+    const A = v(a), B = v(b);
+    const d = Math.acos(Math.max(-1, Math.min(1, A[0] * B[0] + A[1] * B[1] + A[2] * B[2])));
+    if (d < 1e-6) return [a, b];
+    const pts = [];
+    for (let i = 0; i <= n; i++) {
+      const t = i / n, s1 = Math.sin((1 - t) * d) / Math.sin(d), s2 = Math.sin(t * d) / Math.sin(d);
+      const [x, y, z] = [0, 1, 2].map(k => s1 * A[k] + s2 * B[k]);
+      pts.push({ lat: Math.atan2(z, Math.hypot(x, y)) / RAD, lon: Math.atan2(y, x) / RAD });
+    }
+    return pts;
+  }
+
+  function drawLookupMap() {
+    const r = look.result;
+    const there = lookupPos(r), here = gridToLatLon(station().grid);
+    if ($('#lookupPathCard').hidden || !there || !here) return;
+    const res = drawWorld($('#lookupMap'), (ctx, X, Y, dots) => {
+      ctx.strokeStyle = css('--series-1');
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      let prev = null;
+      for (const p of greatCircle(here, there)) {
+        if (prev && Math.abs(p.lon - prev.lon) > 180) ctx.moveTo(X(p.lon), Y(p.lat));
+        else if (prev) ctx.lineTo(X(p.lon), Y(p.lat));
+        else ctx.moveTo(X(p.lon), Y(p.lat));
+        prev = p;
+      }
+      ctx.stroke();
+      const x = X(there.lon), y = Y(there.lat);
+      ctx.fillStyle = css('--series-2');
+      ctx.strokeStyle = css('--card');
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(x, y, 6, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
+      dots.push({ x, y, html: `<b class="mono">${esc(r.call)}</b><br>${esc(titleCase(r.name))}` });
+      drawQth(ctx, X(here.lon), Y(here.lat));
+      dots.push({ x: X(here.lon), y: Y(here.lat), html: `<b class="mono">${esc(station().callsign || 'Your QTH')}</b>` });
+    });
+    if (!res) return;
+    $('#lookupLegend').innerHTML = nightLegend(res.night) +
+      legendKey(`border:2px solid ${css('--text')};border-radius:50%`, 'Your QTH') +
+      legendKey(`background:${css('--series-2')};border-radius:50%`, r.call) +
+      legendKey(`height:0;border-top:2px solid ${css('--series-1')};border-radius:0`, 'Short path');
   }
 
   // ------------------------------------------------------------ settings dialog
@@ -877,6 +1283,11 @@
     state.psk = null;
     renderPsk();
     loadPsk();
+    fillRadiusOptions();
+    rpt.key = '';
+    rpt.pos = null;
+    if (currentView === 'repeaters') loadRepeaters();
+    if (look.result) renderLookup();
   }
 
   // ------------------------------------------------------------ loaders
@@ -905,7 +1316,7 @@
     try { state.cycle = await api('api/cycle'); renderCycle(); } catch (e) { console.warn(e); renderCycle(); }
   }
   async function loadLand() {
-    try { state.land = decodeLand(await api('land-110m.json')); drawGrayline(); } catch (e) { console.warn(e); }
+    try { state.land = decodeLand(await api('land-110m.json')); redrawVisible(); } catch (e) { console.warn(e); }
   }
 
   // ------------------------------------------------------------ boot
@@ -915,7 +1326,39 @@
     setInterval(tickClocks, 1000);
     bindSettings();
     bindMapTabs();
-    bindMapHover();
+    for (const id of ['#grayline', '#rptMap', '#lookupMap']) bindCanvasHover($(id));
+
+    $('#viewTabs').addEventListener('click', e => {
+      const b = e.target.closest('[data-view]');
+      if (b) showView(b.dataset.view);
+    });
+    window.addEventListener('hashchange', () => showView(location.hash.slice(1)));
+    // Any element with data-call (callsigns in tables, recent chips) opens a lookup.
+    document.addEventListener('click', e => {
+      const b = e.target.closest('[data-call]');
+      if (b) lookup(b.dataset.call);
+    });
+    $('#lookupForm').addEventListener('submit', e => { e.preventDefault(); lookup($('#lookupInput').value); });
+
+    $('#rptBandChips').addEventListener('click', e => {
+      const b = e.target.closest('[data-band]');
+      if (!b) return;
+      rpt.band = b.dataset.band;
+      storeSet('hamdash.rptBand', rpt.band || null);
+      renderRepeaters();
+    });
+    $('#rptRadius').addEventListener('change', () => { storeSet(`hamdash.rptRadius.${station().units}`, $('#rptRadius').value); loadRepeaters(); });
+    const rptMode = $('#rptMode'), rptOnAir = $('#rptOnAir');
+    rptMode.value = storeGet('hamdash.rptMode') || '';
+    rptOnAir.checked = storeGet('hamdash.rptOnAir') !== 'false';
+    rptMode.addEventListener('change', () => { storeSet('hamdash.rptMode', rptMode.value || null); renderRepeaters(); });
+    rptOnAir.addEventListener('change', () => { storeSet('hamdash.rptOnAir', String(rptOnAir.checked)); renderRepeaters(); });
+    $('#rptSearch').addEventListener('input', renderRepeaters);
+    $('#rptTable').addEventListener('mouseover', e => {
+      const id = e.target.closest('tr[data-id]')?.dataset.id;
+      if (id && +id !== rpt.highlight) { rpt.highlight = +id; drawRepeaterMap(); }
+    });
+    $('#rptTable').addEventListener('mouseleave', () => { rpt.highlight = null; drawRepeaterMap(); });
 
     $('#bandChips').addEventListener('click', e => {
       const b = e.target.closest('[data-band]');
@@ -935,10 +1378,12 @@
 
     try {
       const cfg = await api('api/config');
-      state.defaults = { callsign: cfg.callsign || '', grid: cfg.grid || '', distance_units: cfg.distance_units || 'mi' };
+      state.defaults = { callsign: cfg.callsign || '', grid: cfg.grid || '', distance_units: cfg.distance_units || 'mi', qrz: Boolean(cfg.qrz) };
     } catch (e) { console.warn(e); }
     renderHeader();
     renderPsk();
+    fillRadiusOptions();
+    showView(location.hash.slice(1) || storeGet('hamdash.view') || 'weather');
     if (!station().callsign && !station().grid) openSettings();
 
     loadLand(); loadSolar(); loadIono(); loadSpots(); loadPsk(); loadCycle();
@@ -947,15 +1392,19 @@
     setInterval(loadSpots, 30000);
     setInterval(loadPsk, 5 * 60000);
     setInterval(loadCycle, 12 * 3600000);
-    setInterval(() => { if (!$('#panel-grayline').hidden) drawGrayline(); renderBands(); }, 60000);
+    setInterval(() => { if (currentView === 'weather' && !$('#panel-grayline').hidden) drawGrayline(); renderBands(); }, 60000);
 
-    let rt;
-    new ResizeObserver(() => {
+    // Redraw canvases and charts only when the width changes, not on every
+    // content-height change.
+    let rt, lastWidth = innerWidth;
+    window.addEventListener('resize', () => {
+      if (innerWidth === lastWidth) return;
+      lastWidth = innerWidth;
       clearTimeout(rt);
-      rt = setTimeout(() => { drawGrayline(); renderKp(); renderCycle(); }, 150);
-    }).observe($('.grid'));
+      rt = setTimeout(redrawVisible, 150);
+    });
     matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-      drawGrayline(); renderKp(); renderCycle(); renderScales(); renderTiles();
+      redrawVisible(); renderScales(); renderTiles();
     });
   }
 

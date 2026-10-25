@@ -12,6 +12,11 @@
       <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 10a2 2 0 0 0-1 3.73V22h2v-8.27A2 2 0 0 0 12 10m-4.24-2.24-1.41-1.41A7.94 7.94 0 0 0 4 12a7.94 7.94 0 0 0 2.35 5.65l1.41-1.41A5.96 5.96 0 0 1 6 12c0-1.66.67-3.16 1.76-4.24m8.48 0A5.96 5.96 0 0 1 18 12c0 1.66-.67 3.16-1.76 4.24l1.41 1.41A7.94 7.94 0 0 0 20 12a7.94 7.94 0 0 0-2.35-5.65zM4.93 4.93 3.5 3.5A11.95 11.95 0 0 0 0 12c0 3.31 1.34 6.31 3.5 8.5l1.43-1.43A9.95 9.95 0 0 1 2 12c0-2.76 1.12-5.26 2.93-7.07m14.14 0A9.95 9.95 0 0 1 22 12c0 2.76-1.12 5.26-2.93 7.07l1.43 1.43A11.95 11.95 0 0 0 24 12c0-3.31-1.34-6.31-3.5-8.5z"/></svg>
       <h1>Ham Radio Dashboard</h1>
     </div>
+    <nav class="tabs views" id="viewTabs" aria-label="Dashboard sections">
+      <button type="button" data-view="weather" aria-selected="true">Space weather</button>
+      <button type="button" data-view="repeaters" aria-selected="false">Repeaters</button>
+      <button type="button" data-view="lookup" aria-selected="false">Callsign lookup</button>
+    </nav>
     <button class="station" id="stationBtn" type="button" title="Station settings">
       <span class="mono" id="hdrCall">NOCALL</span>
       <span class="sep">·</span>
@@ -24,7 +29,7 @@
     </div>
   </header>
 
-  <main class="grid">
+  <main class="grid view" id="view-weather">
     <!-- Space weather now -->
     <section class="card span-12" aria-labelledby="h-now">
       <div class="card-head">
@@ -159,11 +164,75 @@
     </section>
   </main>
 
+  <main class="grid view" id="view-repeaters" hidden>
+    <section class="card span-5" aria-labelledby="h-rptmap">
+      <div class="card-head">
+        <h2 id="h-rptmap">Repeaters near <span class="mono" id="rptGrid"></span></h2>
+      </div>
+      <div class="map-wrap local"><canvas id="rptMap" aria-label="Map of nearby repeaters around your location"></canvas></div>
+      <div class="map-legend" id="rptLegend"></div>
+    </section>
+
+    <section class="card span-7" aria-labelledby="h-rptlist">
+      <div class="card-head">
+        <h2 id="h-rptlist">Repeater list</h2>
+        <span class="meta" id="rptMeta"></span>
+      </div>
+      <div class="filters">
+        <div class="chips" id="rptBandChips"></div>
+        <div class="filter-row">
+          <label>Within <select id="rptRadius"></select></label>
+          <label>Mode
+            <select id="rptMode">
+              <option value="">All</option><option>FM</option><option>DMR</option><option>D-STAR</option><option>Fusion</option><option>P25</option><option>NXDN</option>
+            </select>
+          </label>
+          <label><input type="checkbox" id="rptOnAir" checked> On-air only</label>
+          <label class="grow">Search <input type="search" id="rptSearch" placeholder="Call or city"></label>
+        </div>
+      </div>
+      <div class="table-wrap tall">
+        <table class="data repeaters" id="rptTable"></table>
+      </div>
+      <p class="note">Repeater data from <a href="https://hearham.com/" target="_blank" rel="noopener">HearHam</a>, a community-maintained directory. <span id="rptSource"></span> Listings can be out of date, so confirm frequency and tone before you transmit.</p>
+    </section>
+  </main>
+
+  <main class="grid view" id="view-lookup" hidden>
+    <section class="card span-12" aria-labelledby="h-lookup">
+      <div class="card-head">
+        <h2 id="h-lookup">Callsign lookup</h2>
+      </div>
+      <form class="lookup-form" id="lookupForm" role="search">
+        <input id="lookupInput" class="mono" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="15" placeholder="Callsign, e.g. W1AW" aria-label="Callsign">
+        <button type="submit">Look up</button>
+      </form>
+      <div class="chips recent" id="lookupRecent"></div>
+      <p class="note" id="lookupNote"></p>
+    </section>
+
+    <section class="card span-7" aria-label="Lookup result">
+      <div id="lookupResult"></div>
+    </section>
+
+    <section class="card span-5" id="lookupPathCard" aria-labelledby="h-path" hidden>
+      <div class="card-head">
+        <h2 id="h-path">Path from your QTH</h2>
+      </div>
+      <div class="map-wrap"><canvas id="lookupMap" aria-label="Great-circle path from your QTH to the station"></canvas></div>
+      <div class="map-legend" id="lookupLegend"></div>
+      <div class="sun-times" id="lookupPath"></div>
+    </section>
+  </main>
+
   <footer class="foot">
     Data: <a href="https://www.hamqsl.com/solar.html" target="_blank" rel="noopener">N0NBH / HamQSL</a> ·
     <a href="https://www.swpc.noaa.gov/" target="_blank" rel="noopener">NOAA SWPC</a> ·
     <a href="https://prop.kc2g.com/" target="_blank" rel="noopener">KC2G</a> ·
     <a href="https://pskreporter.info/" target="_blank" rel="noopener">PSKReporter</a> ·
+    <a href="https://hearham.com/" target="_blank" rel="noopener">HearHam</a> ·
+    <a href="https://www.qrz.com/" target="_blank" rel="noopener">QRZ</a> ·
+    <a href="https://callook.info/" target="_blank" rel="noopener">callook.info</a> ·
     DX cluster <span id="clusterHost"></span>
   </footer>
 

@@ -17,3 +17,9 @@ configuration:
   dx_cluster_port:
     name: DX cluster port
     description: Telnet port of the DX cluster (default 23).
+  qrz_username:
+    name: QRZ username
+    description: Optional. Your QRZ.com username, for worldwide callsign lookups. A QRZ XML Logbook Data subscription unlocks full details; without one, QRZ returns basic info only.
+  qrz_password:
+    name: QRZ password
+    description: Optional. Your QRZ.com password. It stays on your Home Assistant and is only sent to QRZ.

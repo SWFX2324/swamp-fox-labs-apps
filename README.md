@@ -19,7 +19,7 @@ Requires Home Assistant OS or a Supervised install (amd64 or aarch64).
 
 | | App | Description |
 | --- | --- | --- |
-| <img src="ham_dashboard/icon.png" width="40"> | [Ham Radio Dashboard](ham_dashboard) | Band conditions (80–6 m), NOAA R/S/G scales, SFI, sunspots, K/A index, gray line and MUF maps, DX cluster spots, PSKReporter and NOAA alerts. |
+| <img src="ham_dashboard/icon.png" width="40"> | [Ham Radio Dashboard](ham_dashboard) | Band conditions (80–6 m), NOAA R/S/G scales, SFI, sunspots, K/A index, gray line and MUF maps, DX cluster spots, PSKReporter and NOAA alerts, plus nearby repeaters and QRZ/FCC callsign lookup. |
 
 ## Developing
 
