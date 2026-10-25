@@ -1,0 +1,19 @@
+configuration:
+  callsign:
+    name: Callsign
+    description: Your amateur radio callsign. Used to log in to the DX cluster and to look up who is hearing you on PSKReporter.
+  grid:
+    name: Grid square
+    description: Your Maidenhead locator (4 or 6 characters, e.g. DM14xd). Used for local band estimates, the gray line map and distances.
+  distance_units:
+    name: Distance units
+    description: Show distances in miles or kilometers.
+  dx_cluster_enabled:
+    name: Connect to DX cluster
+    description: Keep a telnet connection to a DX cluster for live spots. Requires a callsign.
+  dx_cluster_host:
+    name: DX cluster host
+    description: Telnet host of the DX cluster (default dxc.ve7cc.net).
+  dx_cluster_port:
+    name: DX cluster port
+    description: Telnet port of the DX cluster (default 23).

@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ham Radio Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 10a2 2 0 0 0-1 3.73V22h2v-8.27A2 2 0 0 0 12 10m-4.24-2.24-1.41-1.41A7.94 7.94 0 0 0 4 12a7.94 7.94 0 0 0 2.35 5.65l1.41-1.41A5.96 5.96 0 0 1 6 12c0-1.66.67-3.16 1.76-4.24m8.48 0A5.96 5.96 0 0 1 18 12c0 1.66-.67 3.16-1.76 4.24l1.41 1.41A7.94 7.94 0 0 0 20 12a7.94 7.94 0 0 0-2.35-5.65zM4.93 4.93 3.5 3.5A11.95 11.95 0 0 0 0 12c0 3.31 1.34 6.31 3.5 8.5l1.43-1.43A9.95 9.95 0 0 1 2 12c0-2.76 1.12-5.26 2.93-7.07m14.14 0A9.95 9.95 0 0 1 22 12c0 2.76-1.12 5.26-2.93 7.07l1.43 1.43A11.95 11.95 0 0 0 24 12c0-3.31-1.34-6.31-3.5-8.5z"/></svg>
+      <h1>Ham Radio Dashboard</h1>
+    </div>
+    <button class="station" id="stationBtn" type="button" title="Station settings">
+      <span class="mono" id="hdrCall">NOCALL</span>
+      <span class="sep">·</span>
+      <span class="mono" id="hdrGrid">----</span>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7m7.43-2.53c.04-.32.07-.64.07-.97s-.03-.66-.07-1l2.11-1.63c.19-.15.24-.42.12-.64l-2-3.46a.5.5 0 0 0-.61-.22l-2.49 1a7.3 7.3 0 0 0-1.69-.98l-.38-2.65A.49.49 0 0 0 14 2h-4a.49.49 0 0 0-.49.42l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1a.5.5 0 0 0-.61.22l-2 3.46a.5.5 0 0 0 .12.64L4.57 11c-.04.34-.07.67-.07 1s.03.65.07.97l-2.11 1.66a.5.5 0 0 0-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1.01c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.43.49.43h4c.25 0 .46-.19.49-.43l.38-2.65c.61-.25 1.17-.58 1.69-.98l2.49 1.01c.22.08.49 0 .61-.22l2-3.46a.5.5 0 0 0-.12-.64z"/></svg>
+    </button>
+    <div class="clocks">
+      <div><span class="clock-label">UTC</span><span class="mono clock" id="clockUtc">--:--:--</span></div>
+      <div><span class="clock-label">Local</span><span class="mono clock" id="clockLocal">--:--:--</span></div>
+    </div>
+  </header>
+
+  <main class="grid">
+    <!-- Space weather now -->
+    <section class="card span-12" aria-labelledby="h-now">
+      <div class="card-head">
+        <h2 id="h-now">Solar &amp; geomagnetic conditions</h2>
+        <span class="meta" id="solarUpdated"></span>
+      </div>
+      <div class="tiles" id="tiles"></div>
+    </section>
+
+    <!-- NOAA scales -->
+    <section class="card span-5" aria-labelledby="h-rsg">
+      <div class="card-head">
+        <h2 id="h-rsg">NOAA space weather scales</h2>
+        <span class="meta" id="rsgDate"></span>
+      </div>
+      <div class="rsg" id="rsg"></div>
+      <table class="mini-table" id="rsgForecast"></table>
+    </section>
+
+    <!-- Bands -->
+    <section class="card span-7" aria-labelledby="h-bands">
+      <div class="card-head">
+        <h2 id="h-bands">HF band conditions</h2>
+        <span class="meta" id="bandsMeta"></span>
+      </div>
+      <div class="table-wrap">
+        <table class="bands" id="bandsTable"></table>
+      </div>
+      <p class="note" id="bandsNote"></p>
+      <div class="vhf" id="vhf"></div>
+    </section>
+
+    <!-- Maps -->
+    <section class="card span-12" aria-labelledby="h-maps">
+      <div class="card-head">
+        <h2 id="h-maps">Maps</h2>
+        <div class="tabs" role="tablist" id="mapTabs">
+          <button role="tab" data-map="grayline" aria-selected="true">Gray line</button>
+          <button role="tab" data-map="mufd" aria-selected="false">MUF (3000 km)</button>
+          <button role="tab" data-map="fof2" aria-selected="false">foF2</button>
+        </div>
+      </div>
+      <div class="map-panel" id="panel-grayline">
+        <div class="map-wrap"><canvas id="grayline" aria-label="World map showing day, night and the gray line"></canvas></div>
+        <div class="map-legend" id="graylineLegend"></div>
+        <div class="sun-times" id="sunTimes"></div>
+      </div>
+      <div class="map-panel" id="panel-mufd" hidden>
+        <div class="map-wrap img"><img alt="Maximum usable frequency map from KC2G" data-src="api/map/mufd.svg"></div>
+        <p class="note">Maximum usable frequency for a 3000 km hop, modelled from live ionosonde data. Source: <a href="https://prop.kc2g.com/" target="_blank" rel="noopener">KC2G</a>.</p>
+      </div>
+      <div class="map-panel" id="panel-fof2" hidden>
+        <div class="map-wrap img"><img alt="Critical frequency foF2 map from KC2G" data-src="api/map/fof2.svg"></div>
+        <p class="note">Critical frequency (foF2): the highest frequency reflected straight up. Good NVIS frequencies sit just below it. Source: <a href="https://prop.kc2g.com/" target="_blank" rel="noopener">KC2G</a>.</p>
+      </div>
+    </section>
+
+    <!-- Kp -->
+    <section class="card span-6" aria-labelledby="h-kp">
+      <div class="card-head">
+        <h2 id="h-kp">Planetary K-index</h2>
+        <span class="meta">3-hour Kp · past 4 days + 3-day forecast</span>
+      </div>
+      <div class="chart" id="kpChart"></div>
+      <div class="legend" id="kpLegend"></div>
+    </section>
+
+    <!-- Solar cycle -->
+    <section class="card span-6" aria-labelledby="h-cycle">
+      <div class="card-head">
+        <h2 id="h-cycle">Solar cycle</h2>
+        <span class="meta">Monthly sunspot number</span>
+      </div>
+      <div class="chart" id="cycleChart"></div>
+      <div class="legend" id="cycleLegend"></div>
+    </section>
+
+    <!-- DX spots -->
+    <section class="card span-7" aria-labelledby="h-spots">
+      <div class="card-head">
+        <h2 id="h-spots">DX cluster spots</h2>
+        <span class="meta" id="spotsStatus"></span>
+      </div>
+      <div class="filters">
+        <div class="chips" id="bandChips"></div>
+        <div class="filter-row">
+          <label>Mode
+            <select id="modeFilter">
+              <option value="">All</option><option value="CW">CW</option><option value="SSB">SSB</option><option value="DIGI">Digital</option>
+            </select>
+          </label>
+          <label>Spotted from
+            <select id="contFilter">
+              <option value="">Anywhere</option><option value="NA">North America</option><option value="SA">South America</option><option value="EU">Europe</option><option value="AS">Asia</option><option value="AF">Africa</option><option value="OC">Oceania</option>
+            </select>
+          </label>
+        </div>
+      </div>
+      <div class="table-wrap tall">
+        <table class="data" id="spotsTable"></table>
+      </div>
+    </section>
+
+    <!-- PSKReporter -->
+    <section class="card span-5" aria-labelledby="h-psk">
+      <div class="card-head">
+        <h2 id="h-psk">Who's hearing <span class="mono" id="pskCall"></span></h2>
+        <label class="inline">
+          <select id="pskWindow" aria-label="Time window">
+            <option value="60">Last hour</option><option value="360">Last 6 h</option><option value="1440">Last 24 h</option>
+          </select>
+        </label>
+      </div>
+      <div class="psk-summary" id="pskSummary"></div>
+      <div class="table-wrap tall">
+        <table class="data" id="pskTable"></table>
+      </div>
+      <p class="note">Reception reports from <a href="https://pskreporter.info/" target="_blank" rel="noopener">PSKReporter</a> (FT8, FT4, CW skimmers, etc.). They also show on the gray line map.</p>
+    </section>
+
+    <!-- Alerts -->
+    <section class="card span-12" aria-labelledby="h-alerts">
+      <div class="card-head">
+        <h2 id="h-alerts">NOAA alerts, watches &amp; warnings</h2>
+        <span class="meta">Last 72 hours</span>
+      </div>
+      <div class="alerts" id="alerts"></div>
+      <details class="forecast">
+        <summary>NOAA 3-day forecast (full text)</summary>
+        <pre id="forecastText"></pre>
+      </details>
+    </section>
+  </main>
+
+  <footer class="foot">
+    Data: <a href="https://www.hamqsl.com/solar.html" target="_blank" rel="noopener">N0NBH / HamQSL</a> ·
+    <a href="https://www.swpc.noaa.gov/" target="_blank" rel="noopener">NOAA SWPC</a> ·
+    <a href="https://prop.kc2g.com/" target="_blank" rel="noopener">KC2G</a> ·
+    <a href="https://pskreporter.info/" target="_blank" rel="noopener">PSKReporter</a> ·
+    DX cluster <span id="clusterHost"></span>
+  </footer>
+
+  <div class="tooltip" id="tooltip" role="tooltip" hidden></div>
+
+  <dialog id="settings">
+    <form method="dialog" id="settingsForm">
+      <h2>Station settings</h2>
+      <p class="note">These are saved in this browser only, so each person can use their own callsign. Leave a field blank to use the add-on default.</p>
+      <label>Callsign
+        <input name="callsign" id="setCall" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="15" placeholder="e.g. KR4FCD">
+      </label>
+      <label>Grid square
+        <span class="input-row">
+          <input name="grid" id="setGrid" autocomplete="off" spellcheck="false" maxlength="6" placeholder="e.g. DM14xd">
+          <button type="button" class="secondary" id="locateBtn">Use my location</button>
+        </span>
+      </label>
+      <label>Distance units
+        <select name="units" id="setUnits"><option value="">Add-on default</option><option value="mi">Miles</option><option value="km">Kilometers</option></select>
+      </label>
+      <p class="error" id="settingsError" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" class="secondary" id="resetSettings">Use add-on defaults</button>
+        <span class="spacer"></span>
+        <button type="button" class="secondary" id="cancelSettings">Cancel</button>
+        <button type="submit" value="save" id="saveSettings">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>
