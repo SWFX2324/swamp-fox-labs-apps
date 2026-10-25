@@ -1,8 +1,8 @@
 # Ham Radio Dashboard
 
 A read-only propagation, space-weather and station-lookup dashboard for amateur radio
-operators. It adds a **Ham Radio** panel to the Home Assistant sidebar, with three
-tabs: **Space weather**, **Repeaters** and **Callsign lookup**.
+operators. It adds a **Ham Radio** panel to the Home Assistant sidebar, with four
+tabs: **Space weather**, **Repeaters**, **APRS** and **Callsign lookup**.
 
 ## Space weather
 
@@ -45,6 +45,26 @@ its data folder, so the list keeps working across restarts and changing your gri
 updates it instantly. Listings can be out of date, so confirm frequency and tone
 before you transmit.
 
+## APRS
+
+Live APRS activity around you, received directly from the
+[APRS-IS](https://www.aprs2.net/) network. The add-on keeps one receive-only
+connection (it never transmits), filtered to `aprs_radius` around the add-on's grid
+square.
+
+- A map with range rings showing mobiles, fixed stations, digipeaters and iGates,
+  weather stations and objects. Moving stations show a heading tick and their recent
+  track. Hover a station for speed, altitude, path and comment, and click it to
+  find it in the list.
+- A list of stations heard in the last 15 minutes, hour or 3 hours, filterable by
+  type and searchable. Each one links to its aprs.fi page, and callsigns open a
+  lookup.
+- Local weather stations (APRS and CWOP) with temperature, wind, humidity, pressure
+  and rain.
+
+Stations are dropped after 3 hours without a packet. The feed follows the add-on's
+grid square; changing the grid in a browser moves the map but not the feed.
+
 ## Callsign lookup
 
 Type a callsign, or click any callsign in the DX spots, PSKReporter or repeater
@@ -71,6 +91,8 @@ Each callsign is cached for a day so repeated lookups don't hit QRZ again.
 | `dx_cluster_enabled` | Keep a telnet connection to a DX cluster for live spots. |
 | `dx_cluster_host` / `dx_cluster_port` | The cluster to use. Default: `dxc.ve7cc.net:23`. |
 | `qrz_username` / `qrz_password` | Optional. Your QRZ.com login, for worldwide callsign lookups. The password is only sent to QRZ and is never shown in the dashboard or logs. |
+| `aprs_enabled` | Keep a receive-only APRS-IS connection for the APRS tab. Needs `callsign` and `grid`. |
+| `aprs_radius` | How far around your grid to receive APRS stations, in your distance units (10–300, default 100). |
 
 `callsign`, `grid` and `distance_units` are the defaults for everyone who opens the
 panel. Each person can also click the callsign/grid chip at the top right and enter
@@ -87,6 +109,7 @@ share one Home Assistant. The QRZ login is shared by everyone using the panel.
 - [QRZ.com](https://www.qrz.com/) XML callbook and [callook.info](https://callook.info/)
   FCC data (cached a day per callsign, fetched only when you look a call up)
 - DX cluster via telnet (live)
+- [APRS-IS](https://www.aprs2.net/) via `rotate.aprs2.net:14580`, receive-only (live)
 
 The add-on caches everything server-side, so opening the dashboard on several
 devices doesn't multiply the requests to these free services.

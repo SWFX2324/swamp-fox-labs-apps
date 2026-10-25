@@ -23,3 +23,9 @@ configuration:
   qrz_password:
     name: QRZ password
     description: Optional. Your QRZ.com password. It stays on your Home Assistant and is only sent to QRZ.
+  aprs_enabled:
+    name: Live APRS
+    description: Keep a receive-only connection to APRS-IS for the APRS tab. Requires a callsign and grid square.
+  aprs_radius:
+    name: APRS range
+    description: How far around your grid square to receive APRS stations, in your distance units (10-300).

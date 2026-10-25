@@ -849,7 +849,7 @@
 
   // ------------------------------------------------------------ views
 
-  const VIEWS = ['weather', 'repeaters', 'lookup'];
+  const VIEWS = ['weather', 'repeaters', 'aprs', 'lookup'];
   let currentView = 'weather';
 
   function showView(name) {
@@ -863,6 +863,9 @@
     redrawVisible();
     if (name === 'repeaters') loadRepeaters();
     if (name === 'lookup') renderLookup();
+    // Poll the live APRS state only while its tab is open.
+    clearInterval(aprs.timer);
+    if (name === 'aprs') { loadAprs(); aprs.timer = setInterval(loadAprs, 15000); }
   }
 
   // Canvases and charts can only be sized while their view is visible.
@@ -872,6 +875,8 @@
       renderKp(); renderCycle();
     } else if (currentView === 'repeaters') {
       drawRepeaterMap();
+    } else if (currentView === 'aprs') {
+      drawAprsMap();
     } else {
       drawLookupMap();
     }
@@ -886,6 +891,28 @@
     const y = Math.sin((b.lon - a.lon) * RAD) * Math.cos(b.lat * RAD);
     const x = Math.cos(a.lat * RAD) * Math.sin(b.lat * RAD) - Math.sin(a.lat * RAD) * Math.cos(b.lat * RAD) * Math.cos((b.lon - a.lon) * RAD);
     return (Math.atan2(y, x) / RAD + 360) % 360;
+  }
+
+  // Background, four range rings labelled in the user's units, and N/E/S/W,
+  // centred in a w×h canvas with outer ring radius R.
+  function drawRangeRings(ctx, w, h, R, radius) {
+    const cx = w / 2, cy = h / 2, units = station().units;
+    ctx.fillStyle = css('--card-2');
+    ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = css('--grid-line');
+    ctx.lineWidth = 1;
+    ctx.fillStyle = css('--muted');
+    ctx.font = '11px system-ui, sans-serif';
+    for (let i = 1; i <= 4; i++) {
+      ctx.beginPath(); ctx.arc(cx, cy, (R * i) / 4, 0, 2 * Math.PI); ctx.stroke();
+      ctx.fillText(`${+((radius * i) / 4).toFixed(1)} ${units}`, cx + 4, cy - (R * i) / 4 + 12);
+    }
+    ctx.beginPath(); ctx.moveTo(cx, cy - R); ctx.lineTo(cx, cy + R); ctx.moveTo(cx - R, cy); ctx.lineTo(cx + R, cy); ctx.stroke();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (const [t, x, y] of [['N', cx, cy - R - 12], ['S', cx, cy + R + 12], ['E', cx + R + 12, cy], ['W', cx - R - 12, cy]]) ctx.fillText(t, x, y);
+    ctx.textAlign = 'start';
+    ctx.textBaseline = 'alphabetic';
   }
 
   // ------------------------------------------------------------ repeaters
@@ -1004,25 +1031,8 @@
     if (!w) return;
     const ctx = fitCanvas(canvas, w, w);
     const cx = w / 2, cy = w / 2, R = w / 2 - 24;
-    const units = station().units;
     const radiusKm = rptRadiusKm();
-
-    ctx.fillStyle = css('--card-2');
-    ctx.fillRect(0, 0, w, w);
-    ctx.strokeStyle = css('--grid-line');
-    ctx.lineWidth = 1;
-    ctx.fillStyle = css('--muted');
-    ctx.font = '11px system-ui, sans-serif';
-    for (let i = 1; i <= 4; i++) {
-      ctx.beginPath(); ctx.arc(cx, cy, (R * i) / 4, 0, 2 * Math.PI); ctx.stroke();
-      ctx.fillText(`${+((+$('#rptRadius').value * i) / 4).toFixed(1)} ${units}`, cx + 4, cy - (R * i) / 4 + 12);
-    }
-    ctx.beginPath(); ctx.moveTo(cx, cy - R); ctx.lineTo(cx, cy + R); ctx.moveTo(cx - R, cy); ctx.lineTo(cx + R, cy); ctx.stroke();
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    for (const [t, x, y] of [['N', cx, cy - R - 12], ['S', cx, cy + R + 12], ['E', cx + R + 12, cy], ['W', cx - R - 12, cy]]) ctx.fillText(t, x, y);
-    ctx.textAlign = 'start';
-    ctx.textBaseline = 'alphabetic';
+    drawRangeRings(ctx, w, w, R, +$('#rptRadius').value);
 
     const pos = rpt.pos || gridToLatLon(station().grid);
     const dots = [];
@@ -1077,6 +1087,270 @@
 
   function focusRepeaterRow(id) {
     const row = document.querySelector(`#rptTable tr[data-id="${CSS.escape(String(id))}"]`);
+    if (!row) return;
+    row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    row.classList.add('flash');
+    setTimeout(() => row.classList.remove('flash'), 1500);
+  }
+
+  // ------------------------------------------------------------ APRS
+
+  const APRS_SYMBOLS = {
+    '/!': 'Police station', '/#': 'Digipeater', '/$': 'Phone', '/%': 'DX cluster', '/&': 'HF gateway',
+    "/'": 'Small aircraft', '/+': 'Red Cross', '/-': 'House', '/;': 'Campground', '/<': 'Motorcycle',
+    '/=': 'Train', '/>': 'Car', '/?': 'Server', '/A': 'Aid station', '/E': 'Event', '/F': 'Farm vehicle',
+    '/H': 'Hotel', '/I': 'TCP/IP', '/K': 'School', '/O': 'Balloon', '/P': 'Police', '/R': 'RV', '/U': 'Bus',
+    '/W': 'NWS site', '/X': 'Helicopter', '/Y': 'Yacht', '/[': 'Person', '/^': 'Aircraft', '/_': 'Weather station',
+    '/a': 'Ambulance', '/b': 'Bicycle', '/c': 'Command post', '/d': 'Fire department', '/e': 'Horse',
+    '/f': 'Fire truck', '/g': 'Glider', '/h': 'Hospital', '/j': 'Jeep', '/k': 'Truck', '/l': 'Laptop',
+    '/m': 'Mic-E repeater', '/n': 'Node', '/o': 'EOC', '/p': 'Rover', '/r': 'Repeater', '/s': 'Boat',
+    '/u': 'Semi truck', '/v': 'Van', '/w': 'Water station', '/y': 'House with Yagi',
+    '\\!': 'Emergency', '\\#': 'Digipeater', '\\&': 'iGate / gateway', '\\-': 'House', '\\>': 'Car',
+    '\\K': 'Kenwood radio', '\\O': 'Rocket', '\\R': 'Restaurant', '\\S': 'Satellite', '\\W': 'NWS site',
+    '\\_': 'Weather site', '\\a': 'ARES/RACES', '\\j': 'Jeep', '\\k': 'SUV', '\\m': 'Milepost',
+    '\\n': 'Triangle', '\\s': 'Boat', '\\u': 'Truck', '\\v': 'Van', '\\y': 'Skywarn', '\\^': 'Aircraft',
+    '\\0': 'Circle', '\\9': 'Gas station', '\\D': 'Depot', '\\L': 'Lighthouse',
+  };
+  const APRS_MOBILE = new Set(['/>', '/<', '/=', '/O', "/'", '/R', '/U', '/X', '/Y', '/[', '/^', '/a', '/b', '/e', '/f', '/g', '/j', '/k', '/p', '/s', '/u', '/v', '/F', '/P', '\\>', '\\j', '\\k', '\\u', '\\v', '\\s', '\\^']);
+  const APRS_INFRA = new Set(['/#', '\\#', '/&', '\\&', '/r', '/I', '/n', '/m', '/%']);
+  const APRS_CATS = [['mobile', 'Mobile'], ['fixed', 'Fixed'], ['infra', 'Digi / iGate'], ['weather', 'Weather'], ['object', 'Objects']];
+
+  const aprs = { data: null, cat: storeGet('hamdash.aprsCat') || '', highlight: null, timer: null };
+
+  function aprsCategory(st) {
+    if (st.kind !== 'station') return 'object';
+    if (st.wx || st.symbol === '/_' || st.symbol === '\\_' || st.symbol === '/W') return 'weather';
+    if (APRS_MOBILE.has(st.symbol) || st.speed > 8) return 'mobile';
+    if (APRS_INFRA.has(st.symbol)) return 'infra';
+    return 'fixed';
+  }
+
+  function aprsColor(cat) {
+    return { mobile: css('--series-1'), infra: css('--series-2'), weather: css('--series-3'), fixed: css('--text-2') }[cat] || css('--muted');
+  }
+
+  const symbolName = st => `${APRS_SYMBOLS[st.symbol] || 'Station'}${st.overlay ? ` (${st.overlay})` : ''}`;
+  // Callsign without SSID, if it looks like a real callsign (objects often aren't).
+  const lookupCallOf = name => { const c = name.replace(/-[A-Z0-9]{1,2}$/, ''); return /^[A-Z0-9]{3,7}$/.test(c) && /\d/.test(c) && /[A-Z]/.test(c) ? c : null; };
+  const agoShort = t => {
+    const s = Math.max(0, (Date.now() - t) / 1000);
+    return s < 60 ? `${Math.round(s)}s` : s < 3600 ? `${Math.round(s / 60)}m` : `${Math.floor(s / 3600)}h ${Math.round((s % 3600) / 60)}m`;
+  };
+  const metric = () => station().units === 'km';
+  const fmtSpeed = kmh => (metric() ? `${Math.round(kmh)} km/h` : `${Math.round(kmh / 1.609344)} mph`);
+  const fmtAlt = m => (metric() ? `${Math.round(m).toLocaleString()} m` : `${Math.round(m / 0.3048).toLocaleString()} ft`);
+  const fmtTemp = f => (metric() ? `${Math.round((f - 32) / 1.8)}°C` : `${Math.round(f)}°F`);
+  const fmtWind = mph => (metric() ? `${Math.round(mph * 1.609344)} km/h` : `${Math.round(mph)} mph`);
+  const fmtRain = inch => (metric() ? `${(inch * 25.4).toFixed(1)} mm` : `${inch.toFixed(2)} in`);
+
+  function aprsZoomOptions() {
+    const d = aprs.data, units = station().units;
+    const feed = d?.radiusKm ? Math.round(d.radiusKm / (units === 'mi' ? 1.609344 : 1)) : 100;
+    const opts = [...new Set([10, 25, 50, 100, 150, 200, 300].filter(v => v < feed).concat(feed))];
+    const sel = $('#aprsZoom');
+    const want = +storeGet(`hamdash.aprsZoom.${units}`) || feed;
+    if (sel.dataset.sig !== `${units}:${feed}`) {
+      sel.innerHTML = opts.map(v => `<option value="${v}"${v === want ? ' selected' : ''}>${v} ${units}</option>`).join('');
+      if (!opts.includes(want)) sel.value = String(feed);
+      sel.dataset.sig = `${units}:${feed}`;
+    }
+  }
+
+  async function loadAprs() {
+    try { aprs.data = await api('api/aprs'); } catch (e) { aprs.data = { status: 'error', error: e.message, stations: [] }; }
+    renderAprs();
+  }
+
+  function aprsVisible() {
+    const d = aprs.data;
+    if (!d) return [];
+    const since = Date.now() - +$('#aprsSince').value * 60000;
+    const q = $('#aprsSearch').value.trim().toUpperCase();
+    const here = gridToLatLon(station().grid) || d.center;
+    return d.stations
+      .filter(st => st.lastHeard >= since)
+      .map(st => ({ ...st, cat: aprsCategory(st), dist: here ? distanceKm(here, st) : null, bearing: here ? bearingDeg(here, st) : null }))
+      .filter(st => !q || st.name.includes(q) || (st.comment || '').toUpperCase().includes(q) || (st.owner || '').includes(q));
+  }
+
+  function renderAprs() {
+    const d = aprs.data;
+    $('#aprsGrid').textContent = station().grid || 'you';
+    if (!d) return;
+    const STATUS = {
+      connected: `Live · ${d.server}`, connecting: 'Connecting…', reconnecting: 'Reconnecting…',
+      disabled: 'Turned off in the add-on options', 'no-callsign': 'Set a callsign in the add-on options',
+      'no-grid': 'Set a grid square in the add-on options', error: `Unavailable: ${d.error || ''}`,
+    };
+    $('#aprsStatus').textContent = STATUS[d.status] || d.status;
+    aprsZoomOptions();
+
+    const all = aprsVisible();
+    const counts = {};
+    for (const st of all) counts[st.cat] = (counts[st.cat] || 0) + 1;
+    $('#aprsCatChips').innerHTML = [['', 'All', all.length], ...APRS_CATS.map(([k, l]) => [k, l, counts[k] || 0])]
+      .filter(([k, , n]) => !k || n || k === aprs.cat)
+      .map(([k, l, n]) => `<button type="button" class="chip" data-cat="${k}" aria-pressed="${aprs.cat === k}">${l}<span class="n">${n}</span></button>`).join('');
+
+    const rows = all.filter(st => !aprs.cat || st.cat === aprs.cat).sort((a, b) => b.lastHeard - a.lastHeard);
+    $('#aprsMeta').textContent = `${rows.length} station${rows.length === 1 ? '' : 's'}`;
+
+    const here = gridToLatLon(station().grid);
+    const far = here && d.center && distanceKm(here, d.center) > (d.radiusKm || 0) / 2;
+    $('#aprsNote').textContent = far
+      ? `The live feed covers ${fmtDist(d.radiusKm)} around the add-on’s grid square, not your browser’s. Change the grid in the add-on options to move it.`
+      : d.status === 'connected' ? `Receiving everything heard within ${fmtDist(d.radiusKm)} of the add-on’s grid square. Stations drop off after 3 hours of silence.` : '';
+
+    if (!rows.length) {
+      $('#aprsTable').innerHTML = `<tbody><tr><td class="empty">${d.status === 'connected'
+        ? 'No stations heard in this window yet. APRS stations beacon every few minutes to every half hour, so give it a little time.'
+        : esc(STATUS[d.status] || 'Not connected')}</td></tr></tbody>`;
+    } else {
+      $('#aprsTable').innerHTML = `<thead><tr><th>Station</th><th>Heard</th><th class="num">Distance</th><th>Info</th></tr></thead><tbody>${
+        rows.map(st => {
+          const call = st.kind === 'station' ? lookupCallOf(st.name) : null;
+          const who = call ? `<button type="button" class="call-link mono" data-call="${esc(call)}" title="Look up ${esc(call)}">${esc(st.name)}</button>` : `<span class="mono call-plain">${esc(st.name)}</span>`;
+          const kind = st.kind === 'station' ? symbolName(st) : `${st.kind === 'object' ? 'Object' : 'Item'} by ${st.owner || '?'}`;
+          const moving = st.speed > 3;
+          const info = moving ? `${fmtSpeed(st.speed)} ${st.course !== undefined ? compass(st.course) : ''}`
+            : st.wx?.tempF !== undefined && st.wx.tempF !== null ? fmtTemp(st.wx.tempF)
+              : st.alt ? fmtAlt(st.alt) : '';
+          const note = st.comment || st.status || '';
+          return `<tr data-key="${esc(st.kind + ':' + st.name)}">
+            <td>${who}<div class="sub">${esc(kind)} · <a href="https://aprs.fi/info/a/${encodeURIComponent(st.name)}" target="_blank" rel="noopener">aprs.fi</a></div></td>
+            <td class="mono">${agoShort(st.lastHeard)}</td>
+            <td class="mono num">${st.dist !== null ? fmtDist(st.dist) : '—'}<div class="sub">${st.bearing !== null ? compass(st.bearing) : ''}</div></td>
+            <td>${esc(info)}<div class="sub" title="${esc(note)}">${esc(note)}</div></td>
+          </tr>`;
+        }).join('')
+      }</tbody>`;
+    }
+    renderAprsWeather(all);
+    drawAprsMap();
+  }
+
+  function renderAprsWeather(all) {
+    const wx = all.filter(st => st.wx && st.wxTime > Date.now() - 2 * 3600000 && st.wx.tempF != null)
+      .sort((a, b) => (a.dist ?? 1e9) - (b.dist ?? 1e9)).slice(0, 8);
+    $('#aprsWx').innerHTML = wx.length ? wx.map(st => {
+      const w = st.wx;
+      const call = lookupCallOf(st.name);
+      const wind = w.windMph == null ? ''
+        : w.windMph === 0 && !w.gustMph ? 'Calm'
+          : `${w.windDir != null ? compass(w.windDir) + ' ' : ''}${fmtWind(w.windMph)}${w.gustMph ? `, gust ${fmtWind(w.gustMph)}` : ''}`;
+      const rows = [
+        ['Wind', wind],
+        ['Humidity', w.humidity != null ? `${w.humidity}%` : ''],
+        ['Pressure', w.pressureHpa ? `${w.pressureHpa.toFixed(1)} hPa` : ''],
+        ['Rain today', w.rainMidnightIn != null ? fmtRain(w.rainMidnightIn) : ''],
+      ].filter(([, v]) => v);
+      return `<div class="tile wx-card">
+        <span class="label">${call ? `<button type="button" class="call-link mono" data-call="${esc(call)}">${esc(st.name)}</button>` : esc(st.name)}</span>
+        <span class="value">${fmtTemp(w.tempF)}</span>
+        <span class="sub">${st.dist != null ? `${fmtDist(st.dist)} ${compass(st.bearing)} · ` : ''}${agoShort(st.wxTime)} ago</span>
+        <dl class="wx-rows">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('')}</dl>
+      </div>`;
+    }).join('') : '<div class="empty">No weather stations heard in this window yet.</div>';
+  }
+
+  function drawAprsMap() {
+    const canvas = $('#aprsMap');
+    const w = canvas.clientWidth;
+    if (!w) return;
+    const h = Math.round(w * 0.75);
+    const ctx = fitCanvas(canvas, w, h);
+    const R = Math.min(w, h) / 2 - 24, cx = w / 2, cy = h / 2;
+    const zoom = +$('#aprsZoom').value || 100;
+    const radiusKm = zoom * (station().units === 'mi' ? 1.609344 : 1);
+    drawRangeRings(ctx, w, h, R, zoom);
+
+    const dots = [];
+    canvasDots.set(canvas, dots);
+    const d = aprs.data;
+    const center = gridToLatLon(station().grid) || d?.center;
+    if (!center) return;
+    const kx = 111.32 * Math.cos(center.lat * RAD), ky = 110.57;
+    const P = (lat, lon) => [cx + (((lon - center.lon) * kx) / radiusKm) * R, cy - (((lat - center.lat) * ky) / radiusKm) * R];
+    const list = aprsVisible().filter(st => (!aprs.cat || st.cat === aprs.cat) && st.dist <= radiusKm * 1.05);
+
+    ctx.save();
+    ctx.beginPath(); ctx.arc(cx, cy, R + 6, 0, 2 * Math.PI); ctx.clip();
+    if ($('#aprsTracks').checked) {
+      ctx.lineWidth = 2;
+      ctx.globalAlpha = 0.5;
+      for (const st of list) {
+        if (st.track.length < 2) continue;
+        ctx.strokeStyle = aprsColor(st.cat);
+        ctx.beginPath();
+        st.track.forEach(([lat, lon], i) => { const [x, y] = P(lat, lon); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    const labels = $('#aprsLabels').checked;
+    const placed = []; // label boxes already drawn, to skip overlapping ones
+    ctx.font = '11px system-ui, sans-serif';
+    for (const st of list) {
+      const [x, y] = P(st.lat, st.lon);
+      const c = aprsColor(st.cat);
+      const key = `${st.kind}:${st.name}`;
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = css('--card');
+      ctx.fillStyle = c;
+      ctx.beginPath();
+      if (st.cat === 'object') {
+        ctx.moveTo(x, y - 5.5); ctx.lineTo(x + 5.5, y); ctx.lineTo(x, y + 5.5); ctx.lineTo(x - 5.5, y); ctx.closePath();
+        ctx.fillStyle = css('--card'); ctx.strokeStyle = c; ctx.fill(); ctx.stroke();
+      } else {
+        ctx.arc(x, y, 5, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
+      }
+      if (st.speed > 3 && st.course !== undefined) {
+        const a = (st.course - 90) * RAD;
+        ctx.strokeStyle = c;
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(x + 6 * Math.cos(a), y + 6 * Math.sin(a)); ctx.lineTo(x + 13 * Math.cos(a), y + 13 * Math.sin(a)); ctx.stroke();
+      }
+      if (key === aprs.highlight) {
+        ctx.strokeStyle = css('--text');
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(x, y, 10, 0, 2 * Math.PI); ctx.stroke();
+      }
+      const box = { x: x + 7, y: y - 7, w: ctx.measureText(st.name).width + 2, h: 14 };
+      const free = !placed.some(b => box.x < b.x + b.w && b.x < box.x + box.w && box.y < b.y + b.h && b.y < box.y + box.h);
+      if (labels && free) {
+        placed.push(box);
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = css('--card-2');
+        ctx.fillStyle = css('--text-2');
+        ctx.strokeText(st.name, x + 8, y + 4);
+        ctx.fillText(st.name, x + 8, y + 4);
+      }
+      const via = st.path?.digis?.length ? `via ${st.path.digis.join(', ')}` : st.path?.internet ? 'via internet' : 'direct to iGate';
+      dots.push({
+        x, y,
+        html: `<b class="mono">${esc(st.name)}</b> <span class="k">${esc(st.kind === 'station' ? symbolName(st) : st.kind)}</span>` +
+          tipRow('Heard', `${agoShort(st.lastHeard)} ago`) +
+          tipRow('Distance', `${fmtDist(st.dist)} ${compass(st.bearing)}`) +
+          (st.speed > 3 ? tipRow('Moving', `${fmtSpeed(st.speed)} ${st.course !== undefined ? compass(st.course) : ''}`) : '') +
+          (st.alt ? tipRow('Altitude', fmtAlt(st.alt)) : '') +
+          (st.wx?.tempF != null ? tipRow('Temperature', fmtTemp(st.wx.tempF)) : '') +
+          tipRow('Path', esc(`${via}${st.path?.igate ? ` · iGate ${st.path.igate}` : ''}`)) +
+          (st.comment ? `<div class="k">${esc(st.comment)}</div>` : ''),
+        onClick: () => focusAprsRow(key),
+      });
+    }
+    ctx.restore();
+    drawQth(ctx, cx, cy);
+
+    $('#aprsLegend').innerHTML = APRS_CATS.map(([k, l]) => legendKey(k === 'object'
+      ? `border:2px solid ${aprsColor(k)};transform:rotate(45deg) scale(.8)`
+      : `background:${aprsColor(k)};border-radius:50%`, l)).join('') +
+      legendKey(`border:2px solid ${css('--text')};border-radius:50%`, 'You');
+  }
+
+  function focusAprsRow(key) {
+    const row = document.querySelector(`#aprsTable tr[data-key="${CSS.escape(key)}"]`);
     if (!row) return;
     row.scrollIntoView({ block: 'center', behavior: 'smooth' });
     row.classList.add('flash');
@@ -1326,7 +1600,30 @@
     setInterval(tickClocks, 1000);
     bindSettings();
     bindMapTabs();
-    for (const id of ['#grayline', '#rptMap', '#lookupMap']) bindCanvasHover($(id));
+    for (const id of ['#grayline', '#rptMap', '#aprsMap', '#lookupMap']) bindCanvasHover($(id));
+
+    $('#aprsCatChips').addEventListener('click', e => {
+      const b = e.target.closest('[data-cat]');
+      if (!b) return;
+      aprs.cat = b.dataset.cat;
+      storeSet('hamdash.aprsCat', aprs.cat || null);
+      renderAprs();
+    });
+    const aprsSince = $('#aprsSince');
+    aprsSince.value = storeGet('hamdash.aprsSince') || '60';
+    aprsSince.addEventListener('change', () => { storeSet('hamdash.aprsSince', aprsSince.value); renderAprs(); });
+    $('#aprsSearch').addEventListener('input', renderAprs);
+    $('#aprsZoom').addEventListener('change', () => { storeSet(`hamdash.aprsZoom.${station().units}`, $('#aprsZoom').value); drawAprsMap(); });
+    for (const id of ['aprsTracks', 'aprsLabels']) {
+      const box = $(`#${id}`);
+      box.checked = storeGet(`hamdash.${id}`) !== 'false';
+      box.addEventListener('change', () => { storeSet(`hamdash.${id}`, String(box.checked)); drawAprsMap(); });
+    }
+    $('#aprsTable').addEventListener('mouseover', e => {
+      const key = e.target.closest('tr[data-key]')?.dataset.key;
+      if (key && key !== aprs.highlight) { aprs.highlight = key; drawAprsMap(); }
+    });
+    $('#aprsTable').addEventListener('mouseleave', () => { aprs.highlight = null; drawAprsMap(); });
 
     $('#viewTabs').addEventListener('click', e => {
       const b = e.target.closest('[data-view]');

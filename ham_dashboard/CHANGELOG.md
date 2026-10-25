@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0
+
+- New **APRS** tab: live stations around you from APRS-IS (receive-only), on a
+  range-ring map with tracks and headings, plus a filterable list of stations heard
+  and a panel of local weather stations. Each station links to aprs.fi.
+- New `aprs_enabled` and `aprs_radius` options.
+
 ## 0.2.0
 
 - New **Repeaters** tab: repeaters near your grid square from the HearHam directory,

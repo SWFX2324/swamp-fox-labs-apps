@@ -7,11 +7,12 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const net = require('net');
+const { AprsIs } = require('./aprs');
 
 const PORT = +(process.env.PORT || 8099);
 const STATIC_DIR = path.join(__dirname, 'static');
 const SWPC = 'https://services.swpc.noaa.gov';
-const UA = 'SwampFoxLabs-HamRadioDashboard/0.1 (Home Assistant app; github.com/SWFX2324/swamp-fox-labs-apps)';
+const UA = 'SwampFoxLabs-HamRadioDashboard/0.3 (Home Assistant app; github.com/SWFX2324/swamp-fox-labs-apps)';
 
 // ---------------------------------------------------------------- options
 
@@ -28,6 +29,8 @@ function loadOptions() {
     dx_cluster_port: +(env.DX_PORT ?? o.dx_cluster_port ?? 23),
     qrz_username: String(env.QRZ_USER ?? o.qrz_username ?? '').trim(),
     qrz_password: String(env.QRZ_PASS ?? o.qrz_password ?? ''),
+    aprs_enabled: String(env.APRS ?? o.aprs_enabled ?? true) !== 'false',
+    aprs_radius: +(env.APRS_RADIUS ?? o.aprs_radius ?? 100),
   };
 }
 const options = loadOptions();
@@ -373,6 +376,7 @@ class Cluster {
 }
 
 const cluster = new Cluster();
+const aprs = new AprsIs({ userAgent: 'SwampFoxLabsHamDash 0.3' });
 
 // ---------------------------------------------------------------- geo
 
@@ -383,6 +387,18 @@ function distanceKm(a, b) {
   const dLat = (b.lat - a.lat) * RAD, dLon = (b.lon - a.lon) * RAD;
   const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * RAD) * Math.cos(b.lat * RAD) * Math.sin(dLon / 2) ** 2;
   return 2 * 6371 * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+function gridToLatLon(grid) {
+  const m = String(grid || '').trim().toUpperCase().match(/^([A-R])([A-R])(\d)(\d)([A-X])?([A-X])?/);
+  if (!m) return null;
+  let lon = (m[1].charCodeAt(0) - 65) * 20 - 180 + +m[3] * 2;
+  let lat = (m[2].charCodeAt(0) - 65) * 10 - 90 + +m[4];
+  if (m[5] && m[6]) {
+    lon += (m[5].charCodeAt(0) - 65) / 12 + 1 / 24;
+    lat += (m[6].charCodeAt(0) - 65) / 24 + 1 / 48;
+  } else { lon += 1; lat += 0.5; }
+  return { lat, lon };
 }
 
 function bearingDeg(a, b) {
@@ -462,7 +478,7 @@ async function nearbyRepeaters(pos, radiusKm) {
 
 // ---------------------------------------------------------------- callsign lookup
 
-const QRZ_AGENT = 'SwampFoxLabsHamDash-0.2';
+const QRZ_AGENT = 'SwampFoxLabsHamDash-0.3';
 let qrzSession = null;
 const qrzConfigured = () => Boolean(options.qrz_username && options.qrz_password);
 
@@ -584,6 +600,8 @@ async function api(route, q, res) {
       if (lat === null || lon === null || Math.abs(lat) > 90 || Math.abs(lon) > 180) return send(res, 400, { error: 'Set a valid grid square' });
       return send(res, 200, await nearbyRepeaters({ lat, lon }, radius));
     }
+    case '/api/aprs':
+      return send(res, 200, aprs.snapshot());
     case '/api/lookup': {
       const call = String(q.get('call') || '').trim().toUpperCase();
       if (!/^[A-Z0-9/]{3,15}$/.test(call)) return send(res, 400, { error: 'Enter a valid callsign' });
@@ -639,4 +657,10 @@ http.createServer(async (req, res) => {
 }).listen(PORT, () => {
   console.log(`[ham-dashboard] listening on :${PORT} (call=${options.callsign || '-'} grid=${options.grid || '-'})`);
   cluster.start(options);
+  aprs.start({
+    enabled: options.aprs_enabled,
+    callsign: options.callsign,
+    center: gridToLatLon(options.grid),
+    radiusKm: Math.min(Math.max(options.aprs_radius, 10), 300) * (options.distance_units === 'mi' ? 1.609344 : 1),
+  });
 });

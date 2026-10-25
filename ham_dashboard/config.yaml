@@ -1,5 +1,5 @@
 name: Ham Radio Dashboard
-version: "0.2.0"
+version: "0.3.0"
 slug: ham_dashboard
 description: Band conditions, space weather, MUF maps and DX spots for amateur radio operators
 url: https://github.com/SWFX2324/swamp-fox-labs-apps/tree/main/ham_dashboard
@@ -22,6 +22,8 @@ options:
   dx_cluster_port: 23
   qrz_username: ""
   qrz_password: ""
+  aprs_enabled: true
+  aprs_radius: 100
 schema:
   callsign: "match(^[A-Za-z0-9/]{0,15}$)"
   grid: "match(^([A-Ra-r]{2}[0-9]{2}([A-Xa-x]{2})?)?$)"
@@ -31,3 +33,5 @@ schema:
   dx_cluster_port: port
   qrz_username: "str?"
   qrz_password: "password?"
+  aprs_enabled: bool
+  aprs_radius: int(10,300)

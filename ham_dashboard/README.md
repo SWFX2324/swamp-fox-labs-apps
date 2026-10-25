@@ -15,6 +15,8 @@ and dark mode.
 - Live DX cluster spots, and PSKReporter "who's hearing me"
 - NOAA alerts, watches and warnings
 - **Repeaters** tab: nearby repeaters on a map and in a filterable list, from HearHam
+- **APRS** tab: live stations, tracks and local weather stations around you, from
+  APRS-IS (receive-only)
 - **Callsign lookup** tab: QRZ.com (with your own login) or free FCC data for US
   calls, with beam heading and great-circle path from your QTH
 

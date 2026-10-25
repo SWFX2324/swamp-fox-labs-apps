@@ -13,9 +13,10 @@
       <h1>Ham Radio Dashboard</h1>
     </div>
     <nav class="tabs views" id="viewTabs" aria-label="Dashboard sections">
-      <button type="button" data-view="weather" aria-selected="true">Space weather</button>
+      <button type="button" data-view="weather" aria-selected="true"><span class="long">Space weather</span><span class="short">Weather</span></button>
       <button type="button" data-view="repeaters" aria-selected="false">Repeaters</button>
-      <button type="button" data-view="lookup" aria-selected="false">Callsign lookup</button>
+      <button type="button" data-view="aprs" aria-selected="false">APRS</button>
+      <button type="button" data-view="lookup" aria-selected="false"><span class="long">Callsign lookup</span><span class="short">Lookup</span></button>
     </nav>
     <button class="station" id="stationBtn" type="button" title="Station settings">
       <span class="mono" id="hdrCall">NOCALL</span>
@@ -198,6 +199,51 @@
     </section>
   </main>
 
+  <main class="grid view" id="view-aprs" hidden>
+    <section class="card span-7" aria-labelledby="h-aprsmap">
+      <div class="card-head">
+        <h2 id="h-aprsmap">APRS near <span class="mono" id="aprsGrid"></span></h2>
+        <span class="meta" id="aprsStatus"></span>
+      </div>
+      <div class="filter-row map-controls">
+        <label>Show within <select id="aprsZoom"></select></label>
+        <label><input type="checkbox" id="aprsTracks" checked> Tracks</label>
+        <label><input type="checkbox" id="aprsLabels" checked> Labels</label>
+      </div>
+      <div class="map-wrap local aprs"><canvas id="aprsMap" aria-label="Map of APRS stations heard near you"></canvas></div>
+      <div class="map-legend" id="aprsLegend"></div>
+      <p class="note" id="aprsNote"></p>
+    </section>
+
+    <section class="card span-5" aria-labelledby="h-aprslist">
+      <div class="card-head">
+        <h2 id="h-aprslist">Stations heard</h2>
+        <span class="meta" id="aprsMeta"></span>
+      </div>
+      <div class="filters">
+        <div class="chips" id="aprsCatChips"></div>
+        <div class="filter-row">
+          <label>Heard in last
+            <select id="aprsSince"><option value="15">15 min</option><option value="60">1 hour</option><option value="180">3 hours</option></select>
+          </label>
+          <label class="grow">Search <input type="search" id="aprsSearch" placeholder="Call or comment"></label>
+        </div>
+      </div>
+      <div class="table-wrap tall">
+        <table class="data aprs-table" id="aprsTable"></table>
+      </div>
+    </section>
+
+    <section class="card span-12" aria-labelledby="h-aprswx">
+      <div class="card-head">
+        <h2 id="h-aprswx">Local weather stations</h2>
+        <span class="meta">From APRS and CWOP weather beacons</span>
+      </div>
+      <div class="wx-grid" id="aprsWx"></div>
+      <p class="note">Live, receive-only data from the <a href="https://www.aprs2.net/" target="_blank" rel="noopener">APRS-IS</a> network. Station history and tracks are on <a href="https://aprs.fi/" target="_blank" rel="noopener">aprs.fi</a>.</p>
+    </section>
+  </main>
+
   <main class="grid view" id="view-lookup" hidden>
     <section class="card span-12" aria-labelledby="h-lookup">
       <div class="card-head">
@@ -231,6 +277,7 @@
     <a href="https://prop.kc2g.com/" target="_blank" rel="noopener">KC2G</a> ·
     <a href="https://pskreporter.info/" target="_blank" rel="noopener">PSKReporter</a> ·
     <a href="https://hearham.com/" target="_blank" rel="noopener">HearHam</a> ·
+    <a href="https://www.aprs2.net/" target="_blank" rel="noopener">APRS-IS</a> ·
     <a href="https://www.qrz.com/" target="_blank" rel="noopener">QRZ</a> ·
     <a href="https://callook.info/" target="_blank" rel="noopener">callook.info</a> ·
     DX cluster <span id="clusterHost"></span>
