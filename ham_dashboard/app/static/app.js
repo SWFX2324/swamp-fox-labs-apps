@@ -27,6 +27,7 @@
       callsign: (s.callsign || d.callsign || '').toUpperCase(),
       grid: s.grid || d.grid || '',
       units: s.units || d.distance_units || 'mi',
+      type: d.station_type || 'amateur',
     };
   }
 
@@ -130,7 +131,7 @@
 
   function renderHeader() {
     const st = station();
-    $('#hdrCall').textContent = st.callsign || 'Set callsign';
+    $('#hdrCall').textContent = st.callsign || (st.type === 'listener' ? 'Listener' : st.type === 'gmrs' ? 'GMRS' : 'Set callsign');
     $('#hdrGrid').textContent = st.grid || 'Set grid';
     $('#pskCall').textContent = st.callsign || 'you';
   }
@@ -212,7 +213,7 @@
     const body = HF_BANDS.map(([name, mhz, group]) => {
       const g = groups[group];
       const r = iono ? rateBand(mhz, iono.mufd, sunAlt ?? 0, kp ?? 0) : null;
-      const why = iono ? `${mhz} MHz vs MUF ${iono.mufd.toFixed(1)} MHz${name === '6m' && r === 'closed' ? ' (sporadic-E can still open 6m)' : ''}` : '';
+      const why = iono ? `${mhz} MHz vs MUF ${iono.mufd.toFixed(1)} MHz${name === '160m' && sunAlt > 0 ? ' (160 m needs darkness for DX)' : ''}` : '';
       return `<tr><td class="band">${name}</td><td class="freq">${mhz}</td>
         <td>${ratingPill(r, why)}</td>
         <td class="num">${activityCell(act?.bands?.[name])}</td>
@@ -798,7 +799,7 @@
     const status = $('#spotsStatus');
     $('#clusterHost').textContent = d?.host || '';
     if (!d) { status.textContent = ''; return; }
-    const STATUS = { connected: `Live · ${d.host}`, connecting: 'Connecting…', reconnecting: 'Reconnecting…', disabled: 'Disabled in add-on options', 'no-callsign': 'Set a callsign in the add-on options to connect' };
+    const STATUS = { connected: `Live · ${d.host}`, connecting: 'Connecting…', reconnecting: 'Reconnecting…', disabled: 'Disabled in add-on options', 'no-callsign': 'Set a callsign in the add-on options to connect', 'no-license': 'DX cluster spots need a licensed amateur callsign' };
     status.textContent = STATUS[d.status] || d.status;
 
     const mode = $('#modeFilter').value, cont = $('#contFilter').value;
@@ -834,6 +835,11 @@
   function renderPsk(errorMsg) {
     const st = station();
     const sum = $('#pskSummary'), table = $('#pskTable');
+    if (st.type !== 'amateur') {
+      sum.innerHTML = '';
+      table.innerHTML = '<tbody><tr><td class="empty">“Who’s hearing you” shows where your own amateur transmissions are being received, so it needs a licensed amateur callsign. Measured band activity in the band table works for everyone.</td></tr></tbody>';
+      return;
+    }
     if (!st.callsign) {
       sum.innerHTML = '';
       table.innerHTML = '<tbody><tr><td class="empty">Set your callsign (top right) to see who is hearing you.</td></tr></tbody>';
@@ -952,7 +958,7 @@
   let currentView = 'weather';
 
   function showView(name) {
-    if (!VIEWS.includes(name)) name = 'weather';
+    if (!VIEWS.includes(name) || (state.settings.hiddenTabs || []).includes(name)) name = 'weather';
     currentView = name;
     for (const v of VIEWS) $(`#view-${v}`).hidden = v !== name;
     for (const b of document.querySelectorAll('#viewTabs [data-view]')) b.setAttribute('aria-selected', b.dataset.view === name);
@@ -1788,6 +1794,374 @@
       legendKey(`height:0;border-top:2px solid ${css('--series-1')};border-radius:0`, 'Short path');
   }
 
+  // ------------------------------------------------------------ tabs
+
+  const TAB_NAMES = [['weather', 'Space weather'], ['repeaters', 'Repeaters'], ['aprs', 'APRS'], ['pota', 'POTA'], ['sats', 'Satellites'], ['lookup', 'Callsign lookup']];
+
+  // Per-browser: hide tabs someone doesn't use (Space weather always stays).
+  function applyTabVisibility() {
+    const hidden = new Set(state.settings.hiddenTabs || []);
+    for (const b of document.querySelectorAll('#viewTabs [data-view]')) b.hidden = hidden.has(b.dataset.view);
+    if (hidden.has(currentView)) showView('weather');
+  }
+
+  // ------------------------------------------------------------ first-run setup
+
+  const STATION_TYPES = {
+    amateur: { label: 'Licensed amateur', text: 'I have an amateur (ham) radio callsign.' },
+    gmrs: { label: 'GMRS', text: 'I have a GMRS license, or I’m on GMRS more than ham.' },
+    listener: { label: 'Just listening', text: 'No license. I want propagation, weather, maps and activity.' },
+  };
+  const setup = { step: 0, data: null, busy: false, rerun: false };
+
+  // rerun: opened from settings, so the first step offers Cancel instead of Skip.
+  function openSetup({ rerun = false } = {}) {
+    const d = state.defaults;
+    setup.step = 0;
+    setup.rerun = rerun;
+    setup.data = {
+      station_type: d.station_type || 'amateur', callsign: d.callsign || '', grid: d.grid || '',
+      distance_units: d.distance_units || 'mi',
+      aprs_enabled: d.features?.aprs ?? true, dx_cluster_enabled: d.features?.dx_cluster ?? true,
+      nws_alerts: d.features?.nws ?? true, ha_sensors: d.features?.ha_sensors ?? true,
+    };
+    $('#setup').hidden = false;
+    document.body.classList.add('modal-open');
+    renderSetup();
+  }
+
+  function closeSetup() {
+    $('#setup').hidden = true;
+    document.body.classList.remove('modal-open');
+  }
+
+  // Steps depend on the station type: listeners have no callsign step.
+  const setupSteps = () => ['who', ...(setup.data.station_type === 'listener' ? [] : ['call']), 'where', 'features', 'review'];
+
+  function setupError(msg) {
+    const el = $('#setupError');
+    el.textContent = msg || '';
+    el.hidden = !msg;
+  }
+
+  function renderSetup() {
+    const steps = setupSteps();
+    const step = steps[setup.step];
+    const v = setup.data;
+    setupError('');
+    $('#setupProgress').innerHTML = steps.map((_, i) => `<span class="${i <= setup.step ? 'on' : ''}"></span>`).join('');
+    const body = $('#setupBody');
+    if (step === 'who') {
+      body.innerHTML = `
+        <h2 id="setupTitle">Welcome to the Ham Radio Dashboard</h2>
+        <p class="lead">A few quick questions set the dashboard up for you. You can change any of this later on the app’s <b>Configuration</b> tab.</p>
+        <p class="q">How will you use it?</p>
+        <div class="choice-grid">${Object.entries(STATION_TYPES).map(([k, t]) => `
+          <button type="button" class="choice${v.station_type === k ? ' on' : ''}" data-type="${k}" aria-pressed="${v.station_type === k}">
+            <b>${esc(t.label)}</b><span>${esc(t.text)}</span>
+          </button>`).join('')}
+        </div>
+        <p class="note">Everything here is receive-only information. Nothing transmits, so no license is needed to use it.</p>`;
+    } else if (step === 'call') {
+      const ham = v.station_type === 'amateur';
+      body.innerHTML = `
+        <h2 id="setupTitle">${ham ? 'Your callsign' : 'Your GMRS callsign'}</h2>
+        <p class="lead">${ham
+          ? 'Used to log in to the DX cluster for live spots, for APRS (receive-only), and to show who’s hearing your signals on PSKReporter.'
+          : 'Optional. It’s only shown on your dashboard. GMRS callsigns aren’t used to log in to amateur networks, so APRS will use a receive-only listener ID instead.'}</p>
+        <label class="field">Callsign${ham ? '' : ' (optional)'}
+          <input id="setupCall" class="mono" value="${esc(v.callsign)}" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="15" placeholder="${ham ? 'e.g. KR4FCD' : 'e.g. WRAB123'}">
+        </label>`;
+      setTimeout(() => $('#setupCall')?.focus(), 50);
+    } else if (step === 'where') {
+      body.innerHTML = `
+        <h2 id="setupTitle">Where are you?</h2>
+        <p class="lead">Your Maidenhead grid square centers the maps and powers the local band estimate, nearby repeaters, APRS, storm alerts and satellite passes. A 6-character grid (like DM14xd) is accurate to about 3 miles.</p>
+        <label class="field">Grid square
+          <span class="input-row">
+            <input id="setupGrid" class="mono" value="${esc(v.grid)}" autocomplete="off" spellcheck="false" maxlength="6" placeholder="e.g. DM14xd">
+          </span>
+        </label>
+        <div class="setup-helpers">
+          <button type="button" class="secondary" id="setupLocate">Use my location</button>
+          ${v.station_type === 'amateur' && v.callsign ? `<button type="button" class="secondary" id="setupFromLicense">Find from my license (${esc(v.callsign)})</button>` : ''}
+        </div>
+        <p class="q">Distances in</p>
+        <div class="seg">${[['mi', 'Miles'], ['km', 'Kilometers']].map(([k, l]) => `<button type="button" data-units="${k}" aria-pressed="${v.distance_units === k}">${l}</button>`).join('')}</div>`;
+    } else if (step === 'features') {
+      const ham = v.station_type === 'amateur';
+      const row = (key, label, text, disabled) => `
+        <label class="toggle${disabled ? ' disabled' : ''}">
+          <input type="checkbox" data-feature="${key}"${v[key] && !disabled ? ' checked' : ''}${disabled ? ' disabled' : ''}>
+          <span><b>${label}</b><span>${text}</span></span>
+        </label>`;
+      body.innerHTML = `
+        <h2 id="setupTitle">What should it connect to?</h2>
+        <p class="lead">All of these are receive-only. You can turn any of them on or off later.</p>
+        ${row('aprs_enabled', 'Live APRS map', 'Stations, mobiles and weather stations heard near you, from APRS-IS.', false)}
+        ${row('dx_cluster_enabled', 'DX cluster spots', ham ? 'Live DX spots from a ham-run cluster, logged in with your callsign.' : 'Needs a licensed amateur callsign, so it stays off.', !ham)}
+        ${row('nws_alerts', 'Storm safety alerts', 'National Weather Service warnings and forecast for your location (US only).', false)}
+        ${row('ha_sensors', 'Home Assistant sensors', 'Band conditions, space weather, storm status and more as entities for your automations.', false)}`;
+    } else {
+      const t = STATION_TYPES[v.station_type];
+      const features = [v.aprs_enabled && 'Live APRS', v.station_type === 'amateur' && v.dx_cluster_enabled && 'DX cluster', v.nws_alerts && 'Storm alerts', v.ha_sensors && 'Home Assistant sensors'].filter(Boolean);
+      body.innerHTML = `
+        <h2 id="setupTitle">Ready to go</h2>
+        <dl class="facts review">
+          <dt>Station</dt><dd>${esc(t.label)}${v.callsign && v.station_type !== 'listener' ? ` · <span class="mono">${esc(v.callsign.toUpperCase())}</span>` : ''}</dd>
+          <dt>Grid square</dt><dd class="mono">${esc(v.grid)}</dd>
+          <dt>Distances</dt><dd>${v.distance_units === 'mi' ? 'Miles' : 'Kilometers'}</dd>
+          <dt>Connects to</dt><dd>${esc(features.join(', ') || 'Nothing extra')}</dd>
+        </dl>
+        ${state.defaults.setup?.canSave
+          ? '<p class="note">Saving updates the app’s Configuration tab and restarts the app, which takes about 10 seconds.</p>'
+          : '<p class="note">This dashboard isn’t running inside Home Assistant, so these settings are saved in this browser only.</p>'}`;
+    }
+
+    const last = step === 'review';
+    $('#setupActions').innerHTML = `
+      ${setup.step > 0 ? '<button type="button" class="secondary" id="setupBack">Back</button>'
+        : setup.rerun ? '<button type="button" class="link-btn" id="setupCancel">Cancel</button>'
+          : '<button type="button" class="link-btn" id="setupSkip">Skip setup</button>'}
+      <span class="spacer"></span>
+      <button type="button" id="setupNext"${setup.busy ? ' disabled' : ''}>${last ? (setup.busy ? 'Saving…' : 'Save and start') : 'Next'}</button>`;
+  }
+
+  // Validate and store the current step's inputs; false keeps the user there.
+  function readSetupStep() {
+    const step = setupSteps()[setup.step];
+    const v = setup.data;
+    if (step === 'call') {
+      const call = $('#setupCall').value.trim().toUpperCase();
+      if (v.station_type === 'amateur' && !/^[A-Z0-9/]{3,15}$/.test(call)) { setupError('Enter your amateur callsign, like KR4FCD.'); return false; }
+      if (call && !/^[A-Z0-9/]{3,15}$/.test(call)) { setupError('That callsign has characters it shouldn’t.'); return false; }
+      v.callsign = call;
+    } else if (step === 'where') {
+      const grid = $('#setupGrid').value.trim();
+      if (!/^[A-R]{2}\d{2}([A-X]{2})?$/i.test(grid)) { setupError('Enter a 4 or 6 character grid square, like DM14 or DM14xd, or use one of the buttons.'); return false; }
+      v.grid = grid.length === 6 ? grid.slice(0, 4).toUpperCase() + grid.slice(4).toLowerCase() : grid.toUpperCase();
+    } else if (step === 'features') {
+      for (const box of document.querySelectorAll('#setupBody [data-feature]')) if (!box.disabled) v[box.dataset.feature] = box.checked;
+    }
+    return true;
+  }
+
+  async function saveSetup() {
+    const v = setup.data;
+    if (!state.defaults.setup?.canSave) {
+      // Outside Home Assistant: keep it in this browser.
+      state.settings = { ...state.settings, callsign: v.station_type === 'listener' ? '' : v.callsign, grid: v.grid, units: v.distance_units };
+      storeSet('hamdash.settings', JSON.stringify(state.settings));
+      storeSet('hamdash.setupLocal', '1');
+      closeSetup();
+      stationChanged();
+      startTour();
+      return;
+    }
+    setup.busy = true;
+    renderSetup();
+    try {
+      const r = await fetch('api/setup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(v) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+      // The browser's own overrides would hide the new defaults; clear them.
+      state.settings = { hiddenTabs: state.settings.hiddenTabs };
+      storeSet('hamdash.settings', JSON.stringify(state.settings));
+      storeSet('hamdash.tourDone', null);
+      $('#setupBody').innerHTML = '<h2 id="setupTitle">Saved</h2><p class="lead">Restarting the app with your settings… this page reloads by itself in a few seconds.</p><div class="spinner" aria-hidden="true"></div>';
+      $('#setupActions').innerHTML = '';
+      await waitForRestart();
+      location.reload();
+    } catch (e) {
+      setup.busy = false;
+      renderSetup();
+      setupError(e.message);
+    }
+  }
+
+  // Wait for the app to go down and come back after the restart.
+  async function waitForRestart() {
+    const start = Date.now();
+    await new Promise(r => setTimeout(r, 3000));
+    while (Date.now() - start < 90_000) {
+      try {
+        const r = await fetch('api/config', { cache: 'no-store' });
+        if (r.ok && (await r.json()).setup?.done) return;
+      } catch { /* still restarting */ }
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  }
+
+  function bindSetup() {
+    $('#setup').addEventListener('click', async e => {
+      const t = e.target.closest('button');
+      if (!t) return;
+      const v = setup.data;
+      if (t.dataset.type) {
+        v.station_type = t.dataset.type;
+        renderSetup();
+      } else if (t.dataset.units) {
+        v.distance_units = t.dataset.units;
+        const grid = $('#setupGrid').value;
+        renderSetup();
+        $('#setupGrid').value = grid;
+      } else if (t.id === 'setupSkip') {
+        if (state.defaults.setup?.canSave) await fetch('api/setup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"skip":true}' }).catch(() => {});
+        else storeSet('hamdash.setupLocal', '1');
+        closeSetup();
+        if (!station().grid) openSettings();
+      } else if (t.id === 'setupCancel') {
+        closeSetup();
+      } else if (t.id === 'setupBack') {
+        setup.step = Math.max(0, setup.step - 1);
+        renderSetup();
+      } else if (t.id === 'setupNext') {
+        if (!readSetupStep()) return;
+        if (setupSteps()[setup.step] === 'review') return saveSetup();
+        setup.step++;
+        renderSetup();
+      } else if (t.id === 'setupLocate') {
+        if (!navigator.geolocation) return setupError('Location isn’t available in this browser. Enter your grid instead.');
+        t.disabled = true;
+        navigator.geolocation.getCurrentPosition(
+          p => { $('#setupGrid').value = latLonToGrid(p.coords.latitude, p.coords.longitude); setupError(''); t.disabled = false; },
+          err => { setupError(`Couldn’t get your location (${err.message}). Enter your grid instead.`); t.disabled = false; },
+          { timeout: 10000 });
+      } else if (t.id === 'setupFromLicense') {
+        t.disabled = true;
+        try {
+          const r = await api(`api/lookup?call=${encodeURIComponent(v.callsign)}`);
+          const grid = r.grid || (r.lat != null && r.lon != null ? latLonToGrid(r.lat, r.lon) : '');
+          if (grid) { $('#setupGrid').value = grid.slice(0, 6); setupError(''); }
+          else setupError('Your license record has no location. Use your location or enter your grid instead.');
+        } catch { setupError('Couldn’t look up your license. Use your location or enter your grid instead.'); }
+        t.disabled = false;
+      }
+    });
+    $('#setup').addEventListener('keydown', e => {
+      if (e.key === 'Escape' && setup.rerun && !setup.busy) closeSetup();
+      if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); $('#setupNext')?.click(); }
+    });
+  }
+
+  // ------------------------------------------------------------ guided tour
+
+  // [view, element to highlight, title, text]. Steps on hidden tabs are skipped.
+  const TOUR_STEPS = [
+    ['weather', '#viewTabs', 'Six views', 'Space weather, repeaters, APRS, POTA, satellite passes and callsign lookup. Hide the ones you don’t use in settings (⚙ at the top right).'],
+    ['weather', '#tiles', 'Conditions right now', 'Solar flux, sunspots, the K-index and more. Higher solar flux generally means better high-band (20–10 m) conditions; a high K-index means a disturbed, noisy ionosphere.'],
+    ['weather', '#bandsTable', 'Which bands are open', '“At your QTH” is an estimate from the nearest ionosonde. “Heard nearby” is measured: stations actually decoded near you in the last 15 minutes.'],
+    ['weather', '#stormStatus', 'Storm safety', 'Safe, Caution or Danger for your station, from National Weather Service alerts and an optional lightning sensor. Danger also shows a red banner on every tab.'],
+    ['weather', '#panel-grayline', 'Maps', 'Click a map, then scroll to zoom, or pinch on a phone. The layers button switches between Dark, Streets, Satellite and Topo. The golden band is the gray line, where low-band DX is often best.'],
+    ['repeaters', '#rptMap', 'Repeaters near you', 'Click a dot to find it in the list, with frequency, offset and tone. Confirm details before you transmit, since listings can be out of date.'],
+    ['aprs', '#aprsMap', 'Live APRS', 'Stations heard around you right now: mobiles show as arrows with their tracks, plus digipeaters, iGates and weather stations. This is receive-only.'],
+    ['sats', '#passTable', 'Satellite passes', 'Upcoming passes over you. Pick one to see its sky track and Doppler-corrected frequencies.'],
+    ['lookup', '#lookupForm', 'Callsign lookup', 'Look up any station. Callsigns anywhere on the dashboard are clickable and open here, with distance and beam heading from you.'],
+    [null, '#stationBtn', 'Your settings', 'Change the callsign and grid for this browser, hide tabs, run setup again, or replay this tour.'],
+  ];
+  const tour = { steps: [], i: 0, target: null };
+
+  function startTour() {
+    const hidden = new Set(state.settings.hiddenTabs || []);
+    tour.steps = TOUR_STEPS.filter(([view]) => !view || !hidden.has(view));
+    tour.i = 0;
+    $('#tour').hidden = false;
+    showTourStep();
+  }
+
+  function endTour() {
+    $('#tour').hidden = true;
+    tour.target = null;
+    storeSet('hamdash.tourDone', '1');
+  }
+
+  function showTourStep() {
+    const [view, selector, title, text] = tour.steps[tour.i];
+    if (view && view !== currentView) showView(view);
+    if (view === 'weather' && selector === '#panel-grayline') document.querySelector('#mapTabs [data-map="grayline"]')?.click();
+    const pop = $('#tourPop');
+    const last = tour.i === tour.steps.length - 1;
+    pop.innerHTML = `
+      <div class="tour-count">${tour.i + 1} of ${tour.steps.length}</div>
+      <h3 id="tourTitle">${esc(title)}</h3>
+      <p>${esc(text)}</p>
+      <div class="tour-actions">
+        <button type="button" class="link-btn" data-tour="skip">${last ? 'Close' : 'Skip tour'}</button>
+        <span class="spacer"></span>
+        ${tour.i > 0 ? '<button type="button" class="secondary" data-tour="back">Back</button>' : ''}
+        <button type="button" data-tour="next">${last ? 'Done' : 'Next'}</button>
+      </div>`;
+    // Let the view render before measuring where the element is.
+    setTimeout(() => {
+      // Highlight the whole card when it fits on screen, otherwise just the element.
+      const raw = document.querySelector(selector);
+      const el = raw?.closest('.table-wrap') || raw;
+      const card = el?.closest('.card, #viewTabs, #stationBtn');
+      tour.target = card && card.getBoundingClientRect().height < innerHeight * 0.7 ? card : el;
+      // Tall targets go to the top of the screen so the popup can sit below them.
+      const tall = tour.target && tour.target.getBoundingClientRect().height + (pop.offsetHeight || 190) + 40 > innerHeight;
+      tour.target?.scrollIntoView({ block: tall ? 'start' : 'center', behavior: 'instant' });
+      positionTour();
+      pop.focus();
+    }, 250);
+  }
+
+  function positionTour() {
+    if ($('#tour').hidden || !tour.target) return;
+    const r = tour.target.getBoundingClientRect();
+    const pad = 6;
+    const box = { l: r.left - pad, t: Math.max(4, r.top - pad), w: r.width + pad * 2, h: r.height + pad * 2 };
+    const pop = $('#tourPop');
+    const pw = Math.min(360, innerWidth - 24), ph = pop.offsetHeight || 180;
+    // Popup below the box if there's room, else above; if neither fits, pin it
+    // to the bottom and trim the highlight to the space above it.
+    let top;
+    if (box.t + box.h + 14 + ph <= innerHeight - 12) top = box.t + box.h + 14;
+    else if (box.t - 14 - ph >= 12) top = box.t - ph - 14;
+    else { top = innerHeight - ph - 12; box.h = Math.max(40, Math.min(box.h, top - 14 - box.t)); }
+    Object.assign($('#tourSpot').style, { left: `${box.l}px`, top: `${box.t}px`, width: `${box.w}px`, height: `${box.h}px` });
+    // Four panels dim everything around the highlighted box.
+    const px = v => `${Math.max(0, v)}px`;
+    const rects = {
+      top: [0, 0, innerWidth, box.t],
+      bottom: [0, box.t + box.h, innerWidth, innerHeight - box.t - box.h],
+      left: [0, box.t, box.l, box.h],
+      right: [box.l + box.w, box.t, innerWidth - box.l - box.w, box.h],
+    };
+    for (const d of document.querySelectorAll('.tour-dim')) {
+      const [l, t, w, h] = rects[d.dataset.side];
+      Object.assign(d.style, { left: px(l), top: px(t), width: px(w), height: px(h) });
+    }
+    const left = Math.min(Math.max(12, box.l + box.w / 2 - pw / 2), innerWidth - pw - 12);
+    Object.assign(pop.style, { left: `${left}px`, top: `${top}px`, width: `${pw}px` });
+  }
+
+  function bindTour() {
+    $('#tourPop').addEventListener('click', e => {
+      const a = e.target.closest('[data-tour]')?.dataset.tour;
+      if (a === 'skip' || (a === 'next' && tour.i === tour.steps.length - 1)) return endTour();
+      if (a === 'next') { tour.i++; showTourStep(); }
+      if (a === 'back') { tour.i = Math.max(0, tour.i - 1); showTourStep(); }
+    });
+    document.addEventListener('keydown', e => {
+      if ($('#tour').hidden) return;
+      if (e.key === 'Escape') endTour();
+      else if (e.key === 'ArrowRight') $('#tourPop [data-tour="next"]')?.click();
+      else if (e.key === 'ArrowLeft') $('#tourPop [data-tour="back"]')?.click();
+    });
+    window.addEventListener('resize', positionTour);
+    window.addEventListener('scroll', positionTour, { passive: true });
+  }
+
+  // First visit: setup if the app has never been set up, otherwise a one-time
+  // tour for each new browser.
+  function startOnboarding() {
+    const s = state.defaults.setup || {};
+    const localDone = storeGet('hamdash.setupLocal') === '1';
+    if (s.needed && !localDone) return openSetup();
+    if (new URLSearchParams(location.search).has('tour') || !storeGet('hamdash.tourDone')) startTour();
+  }
+
   // ------------------------------------------------------------ settings dialog
 
   function openSettings() {
@@ -1797,15 +2171,21 @@
     $('#setGrid').value = s.grid || '';
     $('#setGrid').placeholder = d.grid ? `Add-on default: ${d.grid}` : 'e.g. DM14xd';
     $('#setUnits').value = s.units || '';
+    const hidden = new Set(s.hiddenTabs || []);
+    $('#setTabs').innerHTML = TAB_NAMES.filter(([v]) => v !== 'weather')
+      .map(([v, label]) => `<label class="check"><input type="checkbox" value="${v}"${hidden.has(v) ? '' : ' checked'}> ${label}</label>`).join('');
+    $('#rerunSetup').hidden = !d.setup?.canSave;
     $('#settingsError').hidden = true;
     $('#settings').showModal();
   }
 
   function bindSettings() {
     $('#stationBtn').addEventListener('click', openSettings);
+    $('#startTour').addEventListener('click', () => { $('#settings').close(); startTour(); });
+    $('#rerunSetup').addEventListener('click', () => { $('#settings').close(); openSetup({ rerun: true }); });
     $('#cancelSettings').addEventListener('click', () => $('#settings').close());
     $('#resetSettings').addEventListener('click', () => {
-      state.settings = {};
+      state.settings = { hiddenTabs: state.settings.hiddenTabs };
       storeSet('hamdash.settings', null);
       $('#settings').close();
       stationChanged();
@@ -1825,8 +2205,10 @@
       if (call && !/^[A-Z0-9/]{3,15}$/.test(call)) { e.preventDefault(); err.textContent = 'That callsign doesn’t look right.'; err.hidden = false; return; }
       if (grid && !/^[A-R]{2}\d{2}([A-X]{2})?$/i.test(grid)) { e.preventDefault(); err.textContent = 'Grid must be 4 or 6 characters, like DM14 or DM14xd.'; err.hidden = false; return; }
       const g = grid.length === 6 ? grid.slice(0, 4).toUpperCase() + grid.slice(4).toLowerCase() : grid.toUpperCase();
-      state.settings = { callsign: call, grid: g, units: $('#setUnits').value };
+      const hiddenTabs = [...document.querySelectorAll('#setTabs input')].filter(i => !i.checked).map(i => i.value);
+      state.settings = { callsign: call, grid: g, units: $('#setUnits').value, hiddenTabs };
       storeSet('hamdash.settings', JSON.stringify(state.settings));
+      applyTabVisibility();
       stationChanged();
     });
   }
@@ -1872,7 +2254,7 @@
   }
   async function loadPsk() {
     const call = station().callsign;
-    if (!call) { renderPsk(); return; }
+    if (!call || station().type !== 'amateur') { renderPsk(); return; }
     try {
       state.psk = await api(`api/psk?call=${encodeURIComponent(call)}&minutes=${$('#pskWindow').value}`);
       renderPsk(); drawGrayline();
@@ -1894,6 +2276,8 @@
     tickClocks();
     setInterval(tickClocks, 1000);
     bindSettings();
+    bindSetup();
+    bindTour();
     bindMapTabs();
     bindCanvasHover($('#skyPlot'));
 
@@ -2007,14 +2391,16 @@
       state.defaults = {
         callsign: cfg.callsign || '', grid: cfg.grid || '', distance_units: cfg.distance_units || 'mi',
         qrz: Boolean(cfg.qrz), spot_watch: cfg.spot_watch || [],
+        station_type: cfg.station_type || 'amateur', setup: cfg.setup || {}, features: cfg.features || {},
       };
     } catch (e) { console.warn(e); }
     renderHeader();
     renderPsk();
     fillRadiusOptions();
     fillPotaRanges();
+    applyTabVisibility();
     showView(location.hash.slice(1) || storeGet('hamdash.view') || 'weather');
-    if (!station().callsign && !station().grid) openSettings();
+    startOnboarding();
 
     loadLand(); loadSolar(); loadIono(); loadSpots(); loadPsk(); loadCycle(); loadActivity(); loadStorm();
     setInterval(loadSolar, 5 * 60000);

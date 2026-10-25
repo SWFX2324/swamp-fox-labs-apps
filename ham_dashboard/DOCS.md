@@ -6,6 +6,44 @@ tabs: **Space weather**, **Repeaters**, **APRS**, **POTA**, **Satellites** and
 **Callsign lookup**. It also publishes its data to Home Assistant as sensors and
 fires events you can use in automations (see [Home Assistant sensors and alerts](#home-assistant-sensors-and-alerts)).
 
+## Getting started
+
+The first time you open the dashboard, a short **setup** asks:
+
+1. How you'll use it: **licensed amateur**, **GMRS**, or **just listening** (no license).
+2. Your callsign, if you have one. Listeners skip this step.
+3. Your grid square. You can type it, use your device's location, or (for US hams)
+   fill it in from your FCC license.
+4. Distance units and which connections to turn on (APRS, DX cluster, storm alerts,
+   Home Assistant sensors).
+
+Saving writes these into the app's **Configuration** tab and restarts the app, which
+takes about 10 seconds. You can skip setup, and run it again from settings (⚙ at the
+top right).
+
+After setup, and once in every new browser, a short **tour** walks through the tabs.
+It's skippable and can be replayed from settings.
+
+### Licensed, GMRS or just listening
+
+Everything on the dashboard is receive-only public information, so no license is
+needed to use it. A few connections need an amateur callsign, so they work
+differently for GMRS users and listeners:
+
+| | Licensed amateur | GMRS / listener |
+| --- | --- | --- |
+| APRS live map | Logs in receive-only with your callsign | Logs in receive-only with a generated listener ID (like `SWL48213`) that can't be mistaken for a real callsign |
+| DX cluster spots | Logs in with your callsign | Off: cluster nodes are run by hams and expect an amateur callsign |
+| "Who's hearing you" | Your PSKReporter reports | Hidden: it shows where *your* amateur transmissions are heard |
+| Everything else | ✓ | ✓ |
+
+GMRS callsigns are never used to log in to amateur networks.
+
+### Hiding tabs
+
+Settings (⚙) has a **Show these tabs** list, saved per browser, so each person can
+hide tabs they don't use. Space weather always stays.
+
 ## Maps
 
 The gray line, Repeaters, APRS, POTA and Lookup maps can be zoomed and panned.
@@ -33,7 +71,7 @@ services see which area you're viewing.
   solar wind speed, Bz and estimated noise floor.
 - **NOAA space weather scales** – current R (radio blackout), S (radiation) and G
   (geomagnetic) levels, yesterday's maximum and the 3-day probability forecast.
-- **HF band conditions, 80 m – 6 m**
+- **HF band conditions, 160 m – 10 m**
   - *HamQSL* day/night ratings by N0NBH.
   - *At your QTH now* – a local estimate that compares each band with the MUF(3000)
     measured by the nearest ionosonde (within 3000 km, last 3 hours), adjusted for
@@ -153,7 +191,8 @@ Each callsign is cached for a day so repeated lookups don't hit QRZ again.
 
 | Option | Description |
 | --- | --- |
-| `callsign` | Your callsign. Used to log in to the DX cluster and as the default for PSKReporter. |
+| `station_type` | `amateur`, `gmrs` or `listener`. See [Licensed, GMRS or just listening](#licensed-gmrs-or-just-listening). Set by setup. |
+| `callsign` | Your callsign. Used to log in to the DX cluster and as the default for PSKReporter. Optional for GMRS and empty for listeners. |
 | `grid` | Your Maidenhead grid square (4 or 6 characters, e.g. `DM14xd`). |
 | `distance_units` | `mi` or `km`. |
 | `dx_cluster_enabled` | Keep a telnet connection to a DX cluster for live spots. |
@@ -187,11 +226,11 @@ add-on's `grid` for anything location-based:
 | `binary_sensor.ham_radio_blackout` | On at R1 or higher |
 | `binary_sensor.ham_geomagnetic_storm` | On at G1 or higher, or Kp 5+ |
 | `sensor.ham_local_muf` | MUF from the nearest ionosonde (MHz) |
-| `sensor.ham_band_80m` … `sensor.ham_band_6m` | `Good`, `Fair`, `Poor` or `Closed` at your QTH, with HamQSL day/night ratings as attributes |
+| `sensor.ham_band_160m` … `sensor.ham_band_10m` | `Good`, `Fair`, `Poor` or `Closed` at your QTH, with HamQSL day/night ratings as attributes |
 | `sensor.ham_next_pass_iss`, `sensor.ham_next_pass_so_50`, … | Rise time of each satellite's next pass of 10° or more, with elevation, azimuths and frequencies as attributes |
 | `sensor.ham_next_good_pass` | The next pass of any satellite reaching 30° or more |
 | `sensor.ham_pota_nearby` | Number of POTA activators within your POTA alert radius, with the closest ten as an attribute |
-| `sensor.ham_activity_80m` … `sensor.ham_activity_6m` | Stations heard nearby on that band in the last 15 minutes, with DX count and farthest station as attributes |
+| `sensor.ham_activity_160m` … `sensor.ham_activity_10m` | Stations heard nearby on that band in the last 15 minutes, with DX count and farthest station as attributes |
 | `binary_sensor.ham_lightning_danger` | On when storm safety is Danger (safety device class), with the reasons as an attribute. Updated every minute. |
 | `sensor.ham_storm_status` | `Safe`, `Caution` or `Danger` |
 | `sensor.ham_nws_alerts` | Number of active NWS alerts for your location, with the list as an attribute |

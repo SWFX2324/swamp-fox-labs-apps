@@ -1,4 +1,7 @@
 configuration:
+  station_type:
+    name: Station type
+    description: Licensed amateur, GMRS, or listener (no license). Non-amateurs get the same dashboard, but the DX cluster and "who's hearing you" are amateur-only, and APRS uses a receive-only listener ID instead of a callsign.
   callsign:
     name: Callsign
     description: Your amateur radio callsign. Used to log in to the DX cluster and to look up who is hearing you on PSKReporter.

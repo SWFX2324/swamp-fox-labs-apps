@@ -6,7 +6,7 @@ A read-only propagation and space-weather dashboard for amateur radio operators,
 in its own Home Assistant sidebar panel. It works on phones and desktops, in light
 and dark mode.
 
-- HF band conditions, 80 m – 6 m: N0NBH/HamQSL ratings plus a local estimate from
+- HF band conditions, 160 m – 10 m: N0NBH/HamQSL ratings plus a local estimate from
   the nearest ionosonde, and measured activity heard nearby
   from PSKReporter
 - Station storm safety from NWS alerts and an optional lightning sensor, with a
@@ -30,7 +30,9 @@ and dark mode.
 - **Callsign lookup** tab: QRZ.com (with your own login) or free FCC data for US
   calls, with beam heading and great-circle path from your QTH
 
-After installing, set your `callsign` and `grid` on the **Configuration** tab. Add
+Open the panel after installing and a short setup takes you through station type
+(licensed amateur, GMRS or just listening), callsign and location, or set `callsign`
+and `grid` on the **Configuration** tab. Add
 your QRZ username and password there too if you want worldwide callsign lookups.
 See the **Documentation** tab for details.
 

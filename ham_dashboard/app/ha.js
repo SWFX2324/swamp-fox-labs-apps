@@ -49,6 +49,7 @@ const CONFIG_KEYS = ['friendly_name', 'icon', 'unit_of_measurement', 'device_cla
 class HomeAssistant {
   constructor() {
     this.available = Boolean(TOKEN || process.env.HA_API_URL);
+    this.token = TOKEN; // also used for the app's own /addons/self/* calls
     this.enabled = false;
     this.mode = null; // 'mqtt' | 'rest'
     this.lastError = null;

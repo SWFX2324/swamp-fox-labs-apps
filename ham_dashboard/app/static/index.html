@@ -369,6 +369,26 @@
 
   <div class="tooltip" id="tooltip" role="tooltip" hidden></div>
 
+  <!-- First-run setup -->
+  <div class="setup-overlay" id="setup" hidden>
+    <div class="setup-card" role="dialog" aria-modal="true" aria-labelledby="setupTitle">
+      <div class="setup-progress" id="setupProgress" aria-hidden="true"></div>
+      <div id="setupBody"></div>
+      <p class="error" id="setupError" hidden></p>
+      <div class="setup-actions" id="setupActions"></div>
+    </div>
+  </div>
+
+  <!-- Guided tour -->
+  <div class="tour" id="tour" hidden>
+    <div class="tour-dim" data-side="top"></div>
+    <div class="tour-dim" data-side="bottom"></div>
+    <div class="tour-dim" data-side="left"></div>
+    <div class="tour-dim" data-side="right"></div>
+    <div class="tour-spot" id="tourSpot"></div>
+    <div class="tour-pop" id="tourPop" role="dialog" aria-modal="false" aria-labelledby="tourTitle" tabindex="-1"></div>
+  </div>
+
   <dialog id="settings">
     <form method="dialog" id="settingsForm">
       <h2>Station settings</h2>
@@ -385,6 +405,14 @@
       <label>Distance units
         <select name="units" id="setUnits"><option value="">Add-on default</option><option value="mi">Miles</option><option value="km">Kilometers</option></select>
       </label>
+      <fieldset class="tab-choices">
+        <legend>Show these tabs</legend>
+        <div id="setTabs"></div>
+      </fieldset>
+      <div class="dialog-links">
+        <button type="button" class="link-btn" id="startTour">Take the tour</button>
+        <button type="button" class="link-btn" id="rerunSetup">Run setup again</button>
+      </div>
       <p class="error" id="settingsError" hidden></p>
       <div class="dialog-actions">
         <button type="button" class="secondary" id="resetSettings">Use add-on defaults</button>

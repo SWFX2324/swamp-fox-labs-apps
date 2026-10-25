@@ -19,11 +19,20 @@ const UA = 'SwampFoxLabs-HamRadioDashboard/0.6 (Home Assistant app; github.com/S
 
 // ---------------------------------------------------------------- options
 
+// OPTIONS_FILE lets local tests point at a scratch copy instead of /data.
+const OPTIONS_FILE = process.env.OPTIONS_FILE || '/data/options.json';
+const STATION_TYPES = ['amateur', 'gmrs', 'listener'];
+
+function readOptionsFile() {
+  try { return JSON.parse(fs.readFileSync(OPTIONS_FILE, 'utf8')); } catch { return {}; }
+}
+
 function loadOptions() {
-  let o = {};
-  try { o = JSON.parse(fs.readFileSync('/data/options.json', 'utf8')); } catch { /* local run */ }
+  const o = readOptionsFile();
   const env = process.env;
+  const stationType = String(env.STATION_TYPE ?? o.station_type ?? 'amateur');
   return {
+    station_type: STATION_TYPES.includes(stationType) ? stationType : 'amateur',
     callsign: String(env.CALLSIGN ?? o.callsign ?? '').trim().toUpperCase(),
     grid: String(env.GRID ?? o.grid ?? '').trim(),
     distance_units: env.UNITS ?? o.distance_units ?? 'mi',
@@ -329,6 +338,8 @@ class Cluster {
 
   start(opts) {
     if (!opts.dx_cluster_enabled) { this.status = 'disabled'; return; }
+    // Cluster nodes are ham-run and expect an amateur callsign at login.
+    if (opts.station_type !== 'amateur') { this.status = 'no-license'; return; }
     if (!opts.callsign) { this.status = 'no-callsign'; return; }
     this.opts = opts;
     this.connect();
@@ -939,6 +950,104 @@ function lookupCall(call) {
   });
 }
 
+// ---------------------------------------------------------------- station type & setup
+
+// A stable, unique receive-only login for people without an amateur callsign
+// (APRS-IS requires a unique login). Letters followed by five digits can't be
+// a real amateur callsign, so it never impersonates anyone.
+function listenerId() {
+  const file = path.join(DATA_DIR, 'listener_id.txt');
+  try {
+    const saved = fs.readFileSync(file, 'utf8').trim();
+    if (/^SWL\d{5}$/.test(saved)) return saved;
+  } catch { /* first run */ }
+  const id = `SWL${String(Math.floor(Math.random() * 1e5)).padStart(5, '0')}`;
+  try { fs.writeFileSync(file, id); } catch (e) { console.warn('[setup] listener ID not saved:', e.message); }
+  return id;
+}
+
+const SETUP_FILE = path.join(DATA_DIR, 'setup.json');
+const setupDone = () => fs.existsSync(SETUP_FILE);
+// New installs without a grid get the setup screen; existing installs don't.
+const needsSetup = () => !setupDone() && !options.grid;
+const canSaveSetup = () => ha.available || Boolean(process.env.SUPERVISOR_URL);
+
+function readBody(req, limit = 16_384) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.setEncoding('utf8');
+    req.on('data', chunk => {
+      body += chunk;
+      if (body.length > limit) { reject(new Error('request too large')); req.destroy(); }
+    });
+    req.on('end', () => resolve(body));
+    req.on('error', reject);
+  });
+}
+
+// The setup screen saves into the app's own options through Supervisor (apps
+// may always call /addons/self/*), so the Configuration tab stays the single
+// source of truth, then restarts the app so new logins take effect.
+async function handleSetup(req, res) {
+  let input;
+  try { input = JSON.parse(await readBody(req) || '{}'); } catch { return send(res, 400, { error: 'Invalid request' }); }
+  const writeDone = extra => fs.writeFileSync(SETUP_FILE, JSON.stringify({ done: true, at: new Date().toISOString(), ...extra }));
+
+  if (input.skip) {
+    writeDone({ skipped: true });
+    return send(res, 200, { ok: true, restarting: false });
+  }
+
+  const stationType = STATION_TYPES.includes(input.station_type) ? input.station_type : null;
+  const callsign = String(input.callsign || '').trim().toUpperCase();
+  const grid = String(input.grid || '').trim();
+  const errors = [];
+  if (!stationType) errors.push('Pick how you use the dashboard.');
+  if (stationType === 'amateur' && !/^[A-Z0-9/]{3,15}$/.test(callsign)) errors.push('Enter your amateur callsign.');
+  if (callsign && !/^[A-Z0-9/]{3,15}$/.test(callsign)) errors.push('That callsign has characters it shouldn’t.');
+  if (!/^[A-R]{2}\d{2}([A-X]{2})?$/i.test(grid)) errors.push('Enter a 4 or 6 character grid square, like DM14 or DM14xd.');
+  if (!['mi', 'km'].includes(input.distance_units)) errors.push('Pick miles or kilometers.');
+  if (errors.length) return send(res, 400, { error: errors.join(' ') });
+  if (!canSaveSetup()) return send(res, 501, { error: 'Setup can only save when the dashboard runs inside Home Assistant.' });
+
+  const g = grid.length === 6 ? grid.slice(0, 4).toUpperCase() + grid.slice(4).toLowerCase() : grid.toUpperCase();
+  const bool = (v, fallback) => (typeof v === 'boolean' ? v : fallback);
+  const current = readOptionsFile();
+  const merged = {
+    ...current,
+    station_type: stationType,
+    callsign: stationType === 'listener' ? '' : callsign,
+    grid: g,
+    distance_units: input.distance_units,
+    aprs_enabled: bool(input.aprs_enabled, current.aprs_enabled ?? true),
+    dx_cluster_enabled: stationType === 'amateur' ? bool(input.dx_cluster_enabled, current.dx_cluster_enabled ?? true) : (current.dx_cluster_enabled ?? true),
+    nws_alerts: bool(input.nws_alerts, current.nws_alerts ?? true),
+    ha_sensors: bool(input.ha_sensors, current.ha_sensors ?? true),
+  };
+  try {
+    const supervisorUrl = process.env.SUPERVISOR_URL || 'http://supervisor';
+    const r = await fetch(`${supervisorUrl}/addons/self/options`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${ha.token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ options: merged }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j.result === 'error') throw new Error(j.message || `Supervisor returned HTTP ${r.status}`);
+  } catch (e) {
+    console.warn('[setup] saving options failed:', e.message);
+    return send(res, 502, { error: `Couldn't save settings: ${e.message}` });
+  }
+  writeDone({ station_type: stationType });
+  console.log(`[setup] saved (${stationType}${callsign ? ` ${callsign}` : ''}, ${g}); restarting`);
+  send(res, 200, { ok: true, restarting: true });
+  setTimeout(() => {
+    const supervisorUrl = process.env.SUPERVISOR_URL || 'http://supervisor';
+    fetch(`${supervisorUrl}/addons/self/restart`, { method: 'POST', headers: { Authorization: `Bearer ${ha.token}` } })
+      .catch(e => console.warn('[setup] restart request failed:', e.message));
+  }, 800);
+}
+
 // ---------------------------------------------------------------- HTTP
 
 function send(res, status, body, type = 'application/json') {
@@ -953,7 +1062,10 @@ async function api(route, q, res) {
   switch (route) {
     case '/api/config':
       return send(res, 200, {
+        station_type: options.station_type,
         callsign: options.callsign, grid: options.grid, distance_units: options.distance_units,
+        setup: { needed: needsSetup(), done: setupDone(), canSave: canSaveSetup() },
+        features: { aprs: options.aprs_enabled, dx_cluster: options.dx_cluster_enabled, nws: options.nws_alerts, ha_sensors: options.ha_sensors },
         cluster: { status: cluster.status, host: options.dx_cluster_host, error: cluster.error },
         qrz: qrzConfigured(),
         ha: ha.status(),
@@ -1029,6 +1141,7 @@ function serveStatic(route, res) {
 http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://localhost');
+    if (url.pathname === '/api/setup' && req.method === 'POST') return await handleSetup(req, res);
     if (url.pathname.startsWith('/api/')) return await api(url.pathname, url.searchParams, res);
     return serveStatic(url.pathname, res);
   } catch (e) {
@@ -1040,7 +1153,8 @@ http.createServer(async (req, res) => {
   cluster.start(options);
   aprs.start({
     enabled: options.aprs_enabled,
-    callsign: options.callsign,
+    // Non-amateurs log in receive-only with a generated listener ID.
+    callsign: options.station_type === 'amateur' && options.callsign ? options.callsign : listenerId(),
     center: gridToLatLon(options.grid),
     radiusKm: Math.min(Math.max(options.aprs_radius, 10), 300) * (options.distance_units === 'mi' ? 1.609344 : 1),
   });

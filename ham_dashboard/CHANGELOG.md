@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.8.0
+
+- **Setup on first run**: pick licensed amateur, GMRS or just listening, then your
+  callsign (if any), grid square (typed, from your device's location, or from your
+  FCC license) and units, and which connections to use. It saves to the app's
+  Configuration tab and restarts the app. It can be skipped and rerun from settings.
+- **Guided tour**: a short, skippable walk through the tabs, shown once per browser
+  and replayable from settings.
+- **Station types**: new `station_type` option. GMRS users and listeners get APRS
+  through a receive-only listener ID; the DX cluster and "who's hearing you" are
+  amateur-only and say so instead of showing empty panels.
+- **Hide tabs** per browser from settings.
+- The HF band table now runs **160 m to 10 m**: 6 m (VHF) is replaced by 160 m. In
+  Home Assistant, `sensor.ham_band_6m` and `sensor.ham_activity_6m` are replaced by
+  `sensor.ham_band_160m` and `sensor.ham_activity_160m`; update any automations that
+  used the 6 m sensors. 6 m stays in the DX spot, POTA and repeater band filters.
+- Existing installs keep working as before (station type defaults to amateur) and
+  see the tour once.
+
 ## 0.7.1
 
 - Map markers are easy to click again: a click within about 15 pixels of a station
