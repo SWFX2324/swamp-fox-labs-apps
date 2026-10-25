@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.1
+
+- Map markers are easy to click again: a click within about 15 pixels of a station
+  or repeater counts, like before the switch to zoomable maps. Arrow and diamond
+  markers have bigger click areas too.
+- The APRS and POTA maps no longer refresh while your pointer is over them, so a
+  marker can't disappear mid-click. They catch up as soon as the pointer leaves.
+- Fix: the Repeaters and APRS maps could open zoomed all the way in to street
+  level in a new browser tab.
+
 ## 0.7.0
 
 - **Zoomable maps**: the gray line, Repeaters, APRS, POTA and Lookup maps can be

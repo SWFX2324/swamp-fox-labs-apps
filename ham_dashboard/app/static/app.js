@@ -392,7 +392,12 @@
   // opts: { world, night, home() }
   function makeMap(key, el, opts = {}) {
     if (maps[key]) return maps[key];
-    const map = L.map(el, { preferCanvas: true, worldCopyJump: true, zoomSnap: 0.5, minZoom: opts.world ? 0 : 3, scrollWheelZoom: false });
+    // Canvas markers with a 10px tolerance, so a click near a small dot still
+    // counts (the old canvas maps picked the nearest dot within 12px).
+    const map = L.map(el, {
+      preferCanvas: true, renderer: L.canvas({ tolerance: 10 }),
+      worldCopyJump: true, zoomSnap: 0.5, minZoom: opts.world ? 0 : 3, scrollWheelZoom: false,
+    });
     map.attributionControl.setPrefix('<a href="https://leafletjs.com" target="_blank" rel="noopener">Leaflet</a>');
     // Wheel zoom only after the map is clicked, so scrolling the page past a
     // map doesn't zoom it by accident.
@@ -426,6 +431,15 @@
     });
     if (opts.home) new HomeControl({ onClick: opts.home }).addTo(map);
     map.on('zoomend moveend', () => declutter(m));
+    // Timed refreshes wait while the pointer is over the map, so markers don't
+    // disappear and come back under the cursor mid-click.
+    el.addEventListener('pointerenter', () => { m.hover = true; });
+    el.addEventListener('pointerleave', () => {
+      m.hover = false;
+      const run = m.pending;
+      m.pending = null;
+      run?.();
+    });
     maps[key] = m;
     return m;
   }
@@ -456,7 +470,8 @@
     const html = shape === 'arrow'
       ? `<span class="map-arrow" style="--c:${color};transform:rotate(${Math.round(course)}deg)"></span>`
       : `<span class="map-${shape}" style="--c:${color}"></span>`;
-    return L.marker(ll(p), { icon: L.divIcon({ className: 'map-shape', html, iconSize: [14, 14], iconAnchor: [7, 7] }) });
+    // The icon box is larger than the shape so it's as easy to click as a dot.
+    return L.marker(ll(p), { icon: L.divIcon({ className: 'map-shape', html, iconSize: [26, 26], iconAnchor: [13, 13] }) });
   }
 
   function highlightRing(p) {
@@ -497,7 +512,18 @@
     }
   }
 
-  const fitRadius = (m, center, km) => m.map.fitBounds(ll(center).toBounds(km * 2000), { padding: [8, 8] });
+  // Zoom so the circle of radius km around center fills the map. Returns false
+  // (and retries next frame) if the map has no size yet, since fitting then
+  // would land at the maximum zoom.
+  function fitRadius(m, center, km) {
+    m.map.invalidateSize();
+    if (!(km > 0) || !m.map.getSize().y) {
+      requestAnimationFrame(() => { if (m.map.getSize().y) fitRadius(m, center, km); });
+      return false;
+    }
+    m.map.fitBounds(ll(center).toBounds(km * 2000), { padding: [8, 8], maxZoom: 14 });
+    return true;
+  }
 
   // ------------------------------------------------------------ gray line map
 
@@ -1091,7 +1117,7 @@
     m.group.clearLayers();
     if (!pos) return;
     const fitKey = `${pos.lat},${pos.lon},${rptRadiusKm()}`;
-    if (m.fitKey !== fitKey) { fitRadius(m, pos, rptRadiusKm()); m.fitKey = fitKey; }
+    if (m.fitKey !== fitKey && fitRadius(m, pos, rptRadiusKm())) m.fitKey = fitKey;
     rangeRings(m, pos, rptRadiusKm(), +$('#rptRadius').value);
 
     const color = { '2m': css('--series-1'), '70cm': css('--series-2') };
@@ -1282,6 +1308,7 @@
   function drawAprsMap() {
     const el = $('#aprsMap');
     if (!el.offsetWidth) return;
+    if (maps.aprs?.hover) { maps.aprs.pending = drawAprsMap; return; }
     const d = aprs.data;
     const center = gridToLatLon(station().grid) || d?.center;
     const m = makeMap('aprs', el, {
@@ -1292,7 +1319,7 @@
     if (!center) return;
     const radiusKm = d?.radiusKm || 160;
     const fitKey = `${center.lat},${center.lon},${radiusKm}`;
-    if (m.fitKey !== fitKey) { fitRadius(m, center, radiusKm); m.fitKey = fitKey; }
+    if (m.fitKey !== fitKey && fitRadius(m, center, radiusKm)) m.fitKey = fitKey;
     rangeRings(m, center, radiusKm, Math.round(radiusKm / (station().units === 'mi' ? 1.609344 : 1)));
 
     const list = aprsVisible().filter(st => !aprs.cat || st.cat === aprs.cat);
@@ -1411,6 +1438,7 @@
   function drawPotaMap(rows = potaVisible().filter(s => !pota.band || s.band === pota.band)) {
     const el = $('#potaMap');
     if (!el.offsetWidth) return;
+    if (maps.pota?.hover) { maps.pota.pending = () => drawPotaMap(); return; }
     const home = () => maps.pota.map.setView([30, -20], el.offsetWidth < 520 ? 0 : 1);
     const m = makeMap('pota', el, { world: true, night: true, home });
     if (!m.fitKey) { home(); m.fitKey = 'world'; }
