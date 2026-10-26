@@ -580,3 +580,36 @@ body.modal-open { overflow: hidden; }
 .status-table .sub { font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
 .status-box textarea { width: 100%; margin-top: 8px; font: 12px var(--mono); color: var(--text); background: var(--card-2); border: 1px solid var(--border); border-radius: 8px; padding: 8px; resize: vertical; }
 .tour-dim { position: fixed; background: rgb(0 0 0 / .55); pointer-events: auto; }
+
+/* ------------------------------------------------------------ propagation */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.prop-target { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; color: var(--text-2); font-size: 13px; }
+.prop-now { margin-top: 12px; }
+.prop-now td .sub { font-size: 11px; color: var(--muted); }
+.prop-windows { margin: 0 0 10px; font-size: 13px; }
+.prop-windows b { font-weight: 600; }
+/* One hue, darker = more open, so it reads without color vision too. */
+.r-good { background: var(--good); }
+.r-fair { background: color-mix(in srgb, var(--good) 40%, var(--card-2)); }
+.r-poor { background: color-mix(in srgb, var(--good) 14%, var(--card-2)); }
+.r-closed { background: var(--card-2); }
+table.prop-grid { border-collapse: separate; border-spacing: 2px; font-size: 11px; min-width: 640px; width: 100%; }
+.prop-grid thead th { font-weight: 500; color: var(--muted); text-align: left; padding: 0 0 2px; white-space: nowrap; min-width: 18px; }
+.prop-grid tbody th { font: 600 12px var(--mono); text-align: right; padding-right: 8px; white-space: nowrap; color: var(--text); }
+.prop-grid td { height: 18px; border-radius: 3px; padding: 0; }
+.prop-grid tr.muf th { font: 500 11px inherit; color: var(--muted); }
+.prop-grid tr.muf td { background: none; color: var(--muted); font-family: var(--mono); height: auto; padding-top: 4px; }
+.map-legend .sw.r-closed { box-shadow: inset 0 0 0 1px var(--border); }
+.chip-pair { display: inline-flex; }
+.chip-pair .chip:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.chip-pair .chip-x { border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: 0; padding-inline: 8px; color: var(--muted); }
+.chip-pair .chip-x:hover { color: var(--critical); }
+button.path-link { background: none; border: 0; padding: 0 2px; margin-left: 4px; color: var(--muted); cursor: pointer; font-size: 13px; }
+button.path-link:hover { color: var(--accent); }
+button.small { padding: 4px 10px; font-size: 12px; }
+.prop-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.prop-map-card { align-self: start; }
+.lmap.prop-map { aspect-ratio: 4 / 3; max-height: 70vh; }
+table.prop-grid { table-layout: fixed; }
+.prop-grid thead th:first-child, .prop-grid tbody th { width: 44px; }
+.prop-grid thead th { overflow: visible; }

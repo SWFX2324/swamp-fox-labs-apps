@@ -1,9 +1,9 @@
 # Ham Radio Dashboard
 
 A read-only propagation, space-weather and station-lookup dashboard for amateur radio
-operators. It adds a **Ham Radio** panel to the Home Assistant sidebar, with six
-tabs: **Space weather**, **Repeaters**, **APRS**, **POTA**, **Satellites** and
-**Callsign lookup**. It also publishes its data to Home Assistant as sensors and
+operators. It adds a **Ham Radio** panel to the Home Assistant sidebar, with seven
+tabs: **Space weather**, **Propagation**, **Repeaters**, **APRS**, **POTA**,
+**Satellites** and **Callsign lookup**. It also publishes its data to Home Assistant as sensors and
 fires events you can use in automations (see [Home Assistant sensors and alerts](#home-assistant-sensors-and-alerts)).
 
 ## Getting started
@@ -135,6 +135,63 @@ services see which area you're viewing.
 - **NOAA alerts, watches and warnings** from the last 72 hours, plus the full 3-day
   forecast text.
 
+## Propagation
+
+Point-to-point analysis: how each HF band should work from your QTH to anywhere,
+right now and over the next 24 hours.
+
+- **Pick a target** by typing a callsign, a grid square (`JO31`, `PM95ux`) or a
+  prefix (`JA`, `VK6`), or by clicking the map. Every DX cluster spot has a ↗
+  link, and Callsign lookup has a **Propagation to** link.
+  - Callsigns are placed from QRZ or FCC data when available, otherwise from the
+    prefix. Big countries (US, Canada, Japan, Australia, Russia, Brazil) are split
+    by call area, but a prefix location is still approximate and the page says so.
+- **Right now** shows the distance, beam heading (short and long path), number of
+  hops, the path MUF and the best band, then a rating for every band on the short
+  and long path. Hover a rating to see what limits it: the MUF, daytime absorption,
+  or the auroral zone during a storm.
+- **Heard** is measured, not modeled: PSKReporter decodes in the last 15 minutes
+  between stations near you and near the target. ↓ counts stations near the target
+  heard near you; ↑ counts stations near you heard near the target. The ↓ direction
+  comes from the same query as band activity; the ↑ direction needs a query for the
+  target's area, limited to one new area every 5 minutes, as PSKReporter asks.
+- **Next 24 hours** is a band-by-hour grid for the short or long path (darker green
+  = more open), with the good windows listed above it and the MUF along the bottom.
+- **The map** draws the short path, the long path (dashed) and the control points
+  where the path MUF is set. Hover a control point for its foF2, MUF and the
+  ionosonde it's anchored to.
+
+### How the estimate works
+
+A simplified model in the spirit of ITU-R P.533, not VOACAP:
+
+1. The great-circle path is split into F2 hops of up to 4000 km. As in P.533, the
+   path MUF is set at the midpoint up to 2000 km, at points 1000 km from each end
+   up to 4000 km, at each hop up to 7000 km, and at points 2000 km from each end on
+   longer paths.
+2. foF2 at each control point comes from a small model driven by the sunspot number
+   (from today's solar flux) and the sun's height there, **anchored to live
+   ionosondes**: it's scaled by how far the nearest ionosonde (within 1500 km)
+   differs from the model right now, or by the worldwide median when none is close.
+   The anchor fades over the first hours of the outlook.
+3. Each hop's MUF uses the secant law, scaled to the measured M(3000) factor.
+4. D-layer absorption (George and Bradley) depends on the sun along the path, the
+   sunspot number and the frequency. It closes the low bands on long daylight paths.
+5. Paths through the auroral zone lose one or two steps when Kp is 4 or more.
+
+Treat it as a guide to when and where to listen. It doesn't know about noise at
+either end, antennas, power, sporadic-E, or flares and storms that haven't happened
+yet. When PSKReporter shows real decodes, they beat the estimate.
+
+### Saved paths
+
+**☆ Save path** keeps up to 10 paths you care about (a club station, a country you
+need, a sked). Saved paths show as chips under the search box, and each one gets a
+Home Assistant sensor (`sensor.ham_path_<name>`) and an event when a band opens on
+it (see [Home Assistant sensors and alerts](#home-assistant-sensors-and-alerts)).
+Saved paths are stored by the app, so every browser sees the same list. Removing a
+path removes its sensor.
+
 ## Repeaters
 
 Repeaters near your grid square, from the community-maintained
@@ -265,6 +322,7 @@ add-on's `grid` for anything location-based:
 | `sensor.ham_pota_nearby` | Number of POTA activators within your POTA alert radius, with the closest ten as an attribute |
 | `sensor.ham_activity_160m` … `sensor.ham_activity_10m` | Stations heard nearby on that band in the last 15 minutes, with DX count and farthest station as attributes |
 | `binary_sensor.ham_6m_open`, `binary_sensor.ham_2m_open` | On while that band is open (see VHF openings), with the status, stations, direction, likely propagation, farthest station and `open_since` as attributes |
+| `sensor.ham_path_<name>` | One per saved path: the best band on the short path right now (or `None`), with every band's rating, the MUF, distance, bearing, the next good hour per band, the long path's best band and PSKReporter decodes heard nearby as attributes |
 | `binary_sensor.ham_lightning_danger` | On when storm safety is Danger (safety device class), with the reasons as an attribute. Updated every minute. |
 | `sensor.ham_storm_status` | `Safe`, `Caution` or `Danger` |
 | `sensor.ham_nws_alerts` | Number of active NWS alerts for your location, with the list as an attribute |
@@ -282,6 +340,14 @@ It also fires events:
   `receivers`, `toward`, `likely`, `farthest_call`, `farthest_grid`, `farthest_km`,
   `regions`). It fires at most once an hour per band, and not for an opening
   already in progress when the app starts.
+- `ham_dashboard_path_open` when a band on a saved path turns Good (`path`, `label`,
+  `band`, `muf_mhz`, `target_grid`, `heard`, `distance_km`, `bearing`). It
+  fires at most every 2 hours per band and path, and not for a band that's already
+  good when the app starts or the path is saved.
+
+From 1.0 on, these entity IDs, attributes and event names stay the same, so updates
+won't break your automations. If one ever has to change, the changelog will say so
+first.
 
 DX and POTA alerts fire at most once every 30 minutes per station and band.
 
@@ -349,6 +415,19 @@ Replace `notify.mobile_app_your_phone` with your own notify service.
           6m is open toward {{ trigger.event.data.toward }}
           ({{ trigger.event.data.likely }}): {{ trigger.event.data.stations }} stations,
           farthest {{ trigger.event.data.farthest_call }} {{ trigger.event.data.farthest_grid }}
+
+- alias: "15m opens to Japan"
+  # Needs a saved path named "Japan".
+  triggers:
+    - trigger: event
+      event_type: ham_dashboard_path_open
+      event_data:
+        path: japan
+        band: 15m
+  actions:
+    - action: notify.mobile_app_your_phone
+      data:
+        message: "15m is open to Japan (MUF {{ trigger.event.data.muf_mhz }} MHz, beam {{ trigger.event.data.bearing | round(0) }}°)"
 
 - alias: "10m is open"
   triggers:
@@ -426,8 +505,9 @@ devices doesn't multiply the requests to these free services.
 
 ## Notes
 
-- The "At your QTH" rating is a rule-of-thumb estimate, not a VOACAP prediction.
-  It is most useful when an ionosonde is reasonably close to you.
+- The "At your QTH" rating and the Propagation tab are estimates, not VOACAP
+  predictions. Both are most useful when an ionosonde is reasonably close; the
+  PSKReporter decodes shown next to them are the reality check.
 - The DX cluster requires a callsign to log in. Without one, the spots panel stays
   empty.
 - Storm safety is an aid, not a guarantee. Disconnect antennas whenever you hear

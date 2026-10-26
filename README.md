@@ -22,13 +22,16 @@ ready image instead of building one on your machine.
 
 | | App | Description |
 | --- | --- | --- |
-| <img src="ham_dashboard/icon.png" width="40"> | [Ham Radio Dashboard](ham_dashboard) | HF band conditions (160–10 m), NOAA R/S/G scales, SFI, sunspots, K/A index, gray line and MUF maps, DX cluster spots, PSKReporter and NOAA alerts, plus nearby repeaters, live APRS, POTA spots, satellite passes, QRZ/FCC callsign lookup, measured band activity, 6 m and 2 m openings, storm safety, and Home Assistant sensors and alerts. |
+| <img src="ham_dashboard/icon.png" width="40"> | [Ham Radio Dashboard](ham_dashboard) | Point-to-point HF propagation to anywhere (now and the next 24 hours, checked against PSKReporter), HF band conditions (160–10 m), NOAA R/S/G scales, SFI, sunspots, K/A index, gray line and MUF maps, DX cluster spots, PSKReporter and NOAA alerts, plus nearby repeaters, live APRS, POTA spots, satellite passes, QRZ/FCC callsign lookup, measured band activity, 6 m and 2 m openings, storm safety, and Home Assistant sensors and alerts. |
 
 <p>
   <img src="docs/screenshot-weather.png" alt="Space weather view: solar conditions, storm safety, NOAA scales and HF band conditions" width="66%">
   <img src="docs/screenshot-phone.png" alt="The dashboard on a phone" width="24%">
 </p>
-<img src="docs/screenshot-sats.png" alt="Satellites view: upcoming passes, sky track and Doppler" width="66%">
+<p>
+  <img src="docs/screenshot-propagation.png" alt="Propagation view: band ratings for a path to Japan, the path map and a 24-hour band-by-hour outlook" width="66%">
+  <img src="docs/screenshot-sats.png" alt="Satellites view: upcoming passes, sky track and Doppler" width="66%">
+</p>
 
 ## Developing
 

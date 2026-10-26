@@ -973,7 +973,7 @@
       rows.map(s => `<tr class="${Date.parse(s.time) > fresh ? 'fresh' : ''}${watched(s.dx) ? ' watched' : ''}" title="${watched(s.dx) ? 'On your watch list' : ''}">
         <td class="mono">${utcHM(new Date(s.time))}</td>
         <td class="mono num">${s.freq.toFixed(1)}</td>
-        <td class="call" title="${esc(s.dxCont || '')}">${callLink(s.dx)}</td>
+        <td class="call" title="${esc(s.dxCont || '')}">${callLink(s.dx)}<button type="button" class="path-link" data-path-target="${esc(s.dx)}" title="Propagation to ${esc(s.dx)}" aria-label="Propagation to ${esc(s.dx)}">↗</button></td>
         <td><span class="tag">${esc(s.mode)}</span></td>
         <td>${callLink(s.spotter)}${s.count > 1 ? `<span class="count">+${s.count - 1}</span>` : ''}</td>
         <td class="comment">${esc(s.comment)}</td></tr>`).join('')
@@ -1104,7 +1104,7 @@
 
   // ------------------------------------------------------------ views
 
-  const VIEWS = ['weather', 'repeaters', 'aprs', 'pota', 'sats', 'lookup'];
+  const VIEWS = ['weather', 'prop', 'repeaters', 'aprs', 'pota', 'sats', 'lookup'];
   let currentView = 'weather';
 
   function showView(name) {
@@ -1121,11 +1121,14 @@
     redrawVisible();
     if (name === 'repeaters') loadRepeaters();
     if (name === 'lookup') renderLookup();
+    if (name === 'prop') openProp();
     // Poll live data only while its tab is open.
-    for (const v of [aprs, pota, sats]) clearInterval(v.timer);
+    for (const v of [aprs, pota, sats, prop]) clearInterval(v.timer);
     if (name === 'aprs') { loadAprs(); aprs.timer = setInterval(loadAprs, 15000); }
     if (name === 'pota') { loadPota(); pota.timer = setInterval(loadPota, 60000); }
     if (name === 'sats') { loadSats(); sats.timer = setInterval(loadSats, 30000); }
+    // Path ratings change slowly; refresh every 10 minutes while the tab is open.
+    if (name === 'prop') prop.timer = setInterval(() => { if (prop.query) analyzePath(prop.query, { quiet: true }); }, 10 * 60000);
   }
 
   // Canvases and charts can only be sized while their view is visible.
@@ -1134,6 +1137,9 @@
       if (!$('#panel-grayline').hidden) { refreshMapSize('grayline'); drawGrayline(); }
       refreshMapSize('vhf'); drawVhfMap();
       renderKp(); renderCycle();
+    } else if (currentView === 'prop') {
+      refreshMapSize('prop');
+      drawPropMap();
     } else if (currentView === 'repeaters') {
       refreshMapSize('repeaters');
       drawRepeaterMap();
@@ -1877,6 +1883,7 @@
       <div class="lookup-links">
         <a href="${esc(r.url)}" target="_blank" rel="noopener">QRZ.com page</a>
         ${r.uls ? `<a href="${esc(r.uls)}" target="_blank" rel="noopener">FCC license record</a>` : ''}
+        <button type="button" class="link-btn" data-path-target="${esc(r.call)}">Propagation to ${esc(r.call)}</button>
       </div>
       ${r.warning ? `<p class="error">QRZ lookup failed (${esc(r.warning)}), so this shows FCC data only.</p>` : ''}`;
 
@@ -1947,7 +1954,278 @@
 
   // ------------------------------------------------------------ tabs
 
-  const TAB_NAMES = [['weather', 'Space weather'], ['repeaters', 'Repeaters'], ['aprs', 'APRS'], ['pota', 'POTA'], ['sats', 'Satellites'], ['lookup', 'Callsign lookup']];
+  // ------------------------------------------------------------ propagation (point to point)
+
+  const prop = { data: null, query: null, loading: false, error: null, side: 'short', saved: [], max: 10, timer: null };
+  // 10 m at the top, like a frequency axis.
+  const PROP_BANDS = HF_BANDS.map(b => b[0]).reverse();
+  const LIMIT_TEXT = { muf: 'above the MUF', absorption: 'daytime absorption', aurora: 'auroral zone, high Kp' };
+
+  // Like api(), but keeps the server's error message.
+  async function apiJson(path, opts) {
+    const r = await fetch(path, { cache: 'no-store', ...opts });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(body.error || `HTTP ${r.status}`);
+    return body;
+  }
+
+  function analyzePath(q, { quiet = false } = {}) {
+    const pos = gridToLatLon(station().grid);
+    if (!pos) { prop.error = 'Set your grid square in settings first.'; renderProp(); return; }
+    prop.query = q;
+    storeSet('hamdash.propTarget', JSON.stringify(q));
+    if (!quiet) { prop.loading = true; prop.error = null; renderProp(); }
+    const params = new URLSearchParams({ lat: pos.lat.toFixed(4), lon: pos.lon.toFixed(4) });
+    if (q.tlat != null) { params.set('tlat', q.tlat.toFixed(4)); params.set('tlon', q.tlon.toFixed(4)); } else params.set('target', q.target);
+    // Only the latest request may update the page.
+    const seq = prop.seq = (prop.seq || 0) + 1;
+    return apiJson(`api/path?${params}`)
+      .then(d => { if (seq === prop.seq) { prop.data = d; prop.error = null; } })
+      .catch(e => { if (seq === prop.seq) { prop.error = e.message; if (!quiet) prop.data = null; } })
+      .finally(() => { if (seq === prop.seq) { prop.loading = false; renderProp(); } });
+  }
+
+  // From other tabs: a DX spot or a lookup result.
+  function analyzeTarget(target) {
+    $('#propInput').value = target;
+    // Set first, so opening the tab doesn't restore the last target instead.
+    prop.query = { target };
+    showView('prop');
+    analyzePath({ target });
+  }
+
+  async function loadSavedPaths() {
+    try { const d = await api('api/paths'); prop.saved = d.paths || []; prop.max = d.max || 10; } catch (e) { console.warn(e); }
+    if (currentView === 'prop') renderProp();
+  }
+
+  const isSaved = t => prop.saved.some(p => Math.abs(p.lat - t.lat) < 0.01 && Math.abs(p.lon - t.lon) < 0.01);
+
+  async function savePath() {
+    const t = prop.data?.target;
+    if (!t) return;
+    const suggestion = (t.place ? t.place.split(',')[0] : t.label).slice(0, 30);
+    const label = prompt('Name this path. It also names its Home Assistant sensor.', suggestion);
+    if (!label || !label.trim()) return;
+    try {
+      const d = await apiJson('api/paths', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ label, target: t }) });
+      prop.saved = d.paths;
+    } catch (e) { prop.error = e.message; }
+    renderProp();
+  }
+
+  async function removePath(id) {
+    const p = prop.saved.find(x => x.id === id);
+    if (!p || !confirm(`Remove the saved path “${p.label}”? Its Home Assistant sensor goes away too.`)) return;
+    try { prop.saved = (await apiJson(`api/paths?id=${encodeURIComponent(id)}`, { method: 'DELETE' })).paths; } catch (e) { prop.error = e.message; }
+    renderProp();
+  }
+
+  const localHour = t => new Date(t).toLocaleTimeString([], { hour: 'numeric' });
+
+  function propPill(x) {
+    if (!x) return pill('none', 'n/a');
+    return pill(x.rating, RATING_LABEL[x.rating], x.limit ? `Limited by ${LIMIT_TEXT[x.limit]}` : '');
+  }
+
+  function heardCell(m, dirs) {
+    if (!m) return `<span class="meta">${dirs.toYou || dirs.fromYou ? '0' : '—'}</span>`;
+    const parts = [];
+    if (m.toYou) parts.push(`<span title="${m.toYou} heard near you from near the target">↓${m.toYou}</span>`);
+    if (m.fromYou) parts.push(`<span title="${m.fromYou} from near you heard near the target">↑${m.fromYou}</span>`);
+    return `<span class="mono">${parts.join(' ')}</span>${m.bestSnr != null ? `<div class="sub">best ${m.bestSnr} dB</div>` : ''}`;
+  }
+
+  // Good windows over the next 24 hours, highest bands first.
+  function windowsText(summary) {
+    const runs = PROP_BANDS.flatMap(b => (summary.windows[b] || []).map(w => ({ b, ...w }))).slice(0, 5);
+    if (!runs.length) return 'No band is rated good on this path in the next 24 hours.';
+    const span = w => `${localHour(w.start)}–${localHour(Date.parse(w.end) + 3600_000)}`;
+    return `<b>Good windows:</b> ${runs.map(w => `${esc(w.b)} ${span(w)}`).join(' · ')}`;
+  }
+
+  function renderProp() {
+    const d = prop.data;
+    $('#propError').hidden = !prop.error;
+    $('#propError').textContent = prop.error || '';
+    $('#propMeta').textContent = d ? `SFI ${d.inputs.sfi ?? '—'} · SSN ${d.inputs.ssn} · Kp ${d.inputs.kp?.toFixed?.(1) ?? d.inputs.kp} · ${d.inputs.ionosondes} ionosondes` : prop.loading ? 'Analyzing…' : '';
+    $('#propSaved').innerHTML = prop.saved.length
+      ? `<span class="meta">Saved:</span>${prop.saved.map(p => `<span class="chip-pair"><button type="button" class="chip" data-saved="${esc(p.id)}" title="${esc(p.place || p.grid)}">${esc(p.label)}</button><button type="button" class="chip chip-x" data-unsave="${esc(p.id)}" aria-label="Remove ${esc(p.label)}" title="Remove">×</button></span>`).join('')}`
+      : '';
+    $('#propHint').hidden = !!d;
+    $('#propNowCard').hidden = !d;
+    $('#propDayCard').hidden = !d;
+    drawPropMap();
+    if (!d) return;
+
+    const t = d.target, s = d.short, l = d.long;
+    const saved = isSaved(t);
+    $('#propSave').textContent = saved ? '★ Saved' : '☆ Save path';
+    $('#propSave').disabled = saved || prop.saved.length >= prop.max;
+    $('#propSave').title = saved ? 'This path is saved' : prop.saved.length >= prop.max ? `You can save up to ${prop.max} paths` : 'Save this path and get a Home Assistant sensor for it';
+
+    $('#propTarget').innerHTML = `
+      <div class="prop-target"><span class="lookup-call mono">${esc(t.label)}</span>
+        <span>${esc([t.name && titleCase(t.name), t.place].filter(Boolean).join(' · '))}</span></div>
+      <div class="sun-times prop-tiles">
+        ${tile('Distance', fmtDist(s.km), '', `${s.hops} hop${s.hops === 1 ? '' : 's'} · ${s.elevation > 1 ? `${Math.round(s.elevation)}° takeoff` : 'low takeoff'}`)}
+        ${tile('Beam heading', `${Math.round(s.bearing)}°`, '', `${compass(s.bearing)} · long path ${Math.round(l.bearing)}°`)}
+        ${tile('Path MUF', s.now.muf.toFixed(1), 'MHz', `Work near ${s.now.fot.toFixed(1)} MHz`)}
+        ${tile('Best now', s.summary.best ? s.summary.best.band : 'None', '', s.summary.best ? RATING_LABEL[s.summary.best.rating] : 'No band rated fair or better')}
+      </div>
+      ${t.approximate ? `<p class="note">Location from the callsign prefix (${esc(t.place)}), so it’s approximate.</p>` : ''}`;
+
+    const m = d.measured;
+    $('#propNow').innerHTML = `<thead><tr><th>Band</th><th>Short path</th><th>Long path</th><th class="num">Heard<small>last ${m.windowMin} min</small></th></tr></thead><tbody>${
+      PROP_BANDS.map(b => `<tr><td class="band">${b}</td><td>${propPill(s.now.bands[b])}</td><td>${propPill(l.now.bands[b])}</td><td class="num">${heardCell(m.bands[b], m.directions)}</td></tr>`).join('')
+    }</tbody>`;
+    const heardAny = Object.keys(m.bands).length;
+    $('#propNowNote').textContent = [
+      `Ratings are estimates from a simplified model: the sunspot number, the sun along the path, Kp, and ${d.anchorStations ? `${d.anchorStations} live ionosondes` : 'no live ionosondes right now'}.`,
+      `“Heard” is measured: PSKReporter decodes (mostly FT8) between stations near you and near the target, ↓ toward you and ↑ from your area.`,
+      !m.directions.toYou && !m.directions.fromYou
+        ? 'PSKReporter data isn’t available right now (it may be asking the app to slow down; see Data sources in settings), so “Heard” is empty.'
+        : m.waitUntil ? `The ↑ direction needs its own PSKReporter query, limited to one new area every 5 minutes; it fills in after ${localHM(new Date(m.waitUntil))}.` : '',
+      heardAny || (!m.directions.toYou && !m.directions.fromYou) ? '' : 'Nothing heard doesn’t mean closed: nobody may be on.',
+    ].filter(Boolean).join(' ');
+
+    // 24-hour grid
+    const side = prop.side === 'long' ? l : s;
+    for (const b of document.querySelectorAll('#propPathTabs [data-path]')) b.setAttribute('aria-selected', b.dataset.path === prop.side);
+    $('#propWindows').innerHTML = windowsText(side.summary);
+    const hours = side.hours;
+    const head = hours.map((h, i) => {
+      const dt = new Date(h.t), lab = dt.getHours() % 3 === 0 || i === 0 ? localHour(h.t) : '';
+      return `<th scope="col" title="${esc(dt.toLocaleString([], { weekday: 'short', hour: 'numeric' }))}">${esc(lab)}</th>`;
+    }).join('');
+    const rows = PROP_BANDS.map(b => `<tr><th scope="row" class="band">${b}</th>${hours.map(h => {
+      const r = h.bands[b];
+      return `<td class="r-${r}" title="${esc(`${b} · ${new Date(h.t).toLocaleString([], { weekday: 'short', hour: 'numeric' })}: ${RATING_LABEL[r]} (MUF ${h.muf} MHz)`)}"><span class="sr-only">${RATING_LABEL[r]}</span></td>`;
+    }).join('')}</tr>`).join('');
+    const muf = `<tr class="muf"><th scope="row">MUF</th>${hours.map((h, i) => `<td>${i % 3 === 0 ? Math.round(h.muf) : ''}</td>`).join('')}</tr>`;
+    $('#propGrid').innerHTML = `<thead><tr><th></th>${head}</tr></thead><tbody>${rows}${muf}</tbody>`;
+    $('#propGridLegend').innerHTML = ['good', 'fair', 'poor', 'closed'].map(r => legendKey('', RATING_LABEL[r]).replace('<span class="sw" style="">', `<span class="sw r-${r}">`)).join('');
+    $('#propDayNote').textContent = `${prop.side === 'long' ? `Long path: ${fmtDist(l.km)} at ${Math.round(l.bearing)}°. ` : ''}Hours in your local time. A model outlook: it follows the sun along the path at today’s sunspot level with Kp held at its current value, and leans on the live ionosondes for the first few hours. It can’t foresee flares or storms.`;
+  }
+
+  // Points from p along a bearing for km (for the long path, which the
+  // short-path interpolation can't draw).
+  function walk(p, bearing, km, n = 160) {
+    const out = [];
+    for (let i = 0; i <= n; i++) {
+      const dd = (km * i / n) / 6371, b = bearing * RAD, la = p.lat * RAD, lo = p.lon * RAD;
+      const lat = Math.asin(Math.sin(la) * Math.cos(dd) + Math.cos(la) * Math.sin(dd) * Math.cos(b));
+      const lon = lo + Math.atan2(Math.sin(b) * Math.sin(dd) * Math.cos(la), Math.cos(dd) - Math.sin(la) * Math.sin(lat));
+      out.push({ lat: lat / RAD, lon: lon / RAD });
+    }
+    return out;
+  }
+
+  // Unwrap longitudes so a path is one line across the antimeridian.
+  function unwrapPath(points) {
+    const out = [];
+    for (const p of points) {
+      let lon = p.lon;
+      if (out.length) {
+        const prev = out[out.length - 1][1];
+        while (lon - prev > 180) lon -= 360;
+        while (lon - prev < -180) lon += 360;
+      }
+      out.push([p.lat, lon]);
+    }
+    return out;
+  }
+
+  function drawPropMap() {
+    const el = $('#propMap');
+    if (!el.offsetWidth) return;
+    const d = prop.data, here = gridToLatLon(station().grid);
+    const shortLine = d && here ? unwrapPath(greatCircle(here, d.target)) : null;
+    const fit = () => {
+      if (shortLine) maps.prop.map.fitBounds(L.latLngBounds(shortLine), { padding: [30, 30], maxZoom: 6 });
+      else maps.prop.map.setView([25, here ? here.lon : 0], el.offsetWidth < 520 ? 0 : 1);
+    };
+    const m = makeMap('prop', el, { world: true, night: true, home: fit });
+    if (!m.clickBound) {
+      m.clickBound = true;
+      m.map.on('click', e => {
+        const lon = ((e.latlng.lng + 540) % 360) - 180;
+        $('#propInput').value = '';
+        analyzePath({ tlat: e.latlng.lat, tlon: lon });
+      });
+    }
+    if (!m.fitKey) { fit(); m.fitKey = 'world'; }
+    m.night.refresh();
+    m.group.clearLayers();
+    if (d && here) {
+      const c = css('--series-1');
+      L.polyline(unwrapPath(walk(here, d.long.bearing, d.long.km)), { color: c, weight: 2, opacity: 0.45, dashArray: '6 6', interactive: false }).addTo(m.group);
+      L.polyline(shortLine, { color: c, weight: 2.5, interactive: false }).addTo(m.group);
+      // Keep markers on the same copy of the world as the line, which may run
+      // past ±180°.
+      const lons = shortLine.map(p => p[1]);
+      const onLine = p => {
+        const mid = (Math.min(...lons) + Math.max(...lons)) / 2;
+        let lon = p.lon;
+        while (lon - mid > 180) lon -= 360;
+        while (lon - mid < -180) lon += 360;
+        return { ...p, lon };
+      };
+      for (const r of d.short.now.reflections) {
+        shapeMarker(onLine(r), 'diamond', css('--series-3'))
+          .bindTooltip(`<b>Control point</b>${tipRow('foF2', `${r.fof2.toFixed(1)} MHz`)}${tipRow('Hop MUF', `${r.muf.toFixed(1)} MHz`)}${tipRow('Sun', sunPhase(r.sunAlt))}${r.station ? tipRow('Anchored to', `${esc(r.station)} (${fmtDist(r.stationKm)})`) : tipRow('Anchored to', 'global ionosonde average')}`, TIP)
+          .addTo(m.group);
+      }
+      dot(onLine(d.target), css('--series-2'), { radius: 6 })
+        .bindTooltip(`<b class="mono">${esc(d.target.label)}</b><br>${esc(d.target.place || d.target.grid || '')}`, TIP)
+        .addTo(m.group);
+      const key = `${d.target.lat},${d.target.lon}|${station().grid}`;
+      if (m.fitKey !== key) { fit(); m.fitKey = key; }
+    }
+    if (here) qthMarker(here, `<b class="mono">${esc(station().callsign || 'Your QTH')}</b>`).addTo(m.group);
+    $('#propLegend').innerHTML = nightLegend() +
+      legendKey(`border:2px solid ${css('--text')};border-radius:50%`, 'Your QTH') +
+      legendKey(`background:${css('--series-2')};border-radius:50%`, 'Target') +
+      legendKey(`height:0;border-top:2px solid ${css('--series-1')};border-radius:0`, 'Short path') +
+      legendKey(`height:0;border-top:2px dashed ${css('--series-1')};border-radius:0;opacity:.6`, 'Long path') +
+      legendKey(`background:${css('--series-3')};transform:rotate(45deg);border-radius:1px`, 'Control point');
+  }
+
+  function bindProp() {
+    $('#propForm').addEventListener('submit', e => {
+      e.preventDefault();
+      const target = $('#propInput').value.trim();
+      if (target) analyzePath({ target });
+    });
+    $('#propSave').addEventListener('click', savePath);
+    $('#propSaved').addEventListener('click', e => {
+      const un = e.target.closest('[data-unsave]');
+      if (un) return removePath(un.dataset.unsave);
+      const b = e.target.closest('[data-saved]');
+      const p = b && prop.saved.find(x => x.id === b.dataset.saved);
+      if (p) { $('#propInput').value = p.target || p.grid; analyzePath({ tlat: p.lat, tlon: p.lon }); }
+    });
+    $('#propPathTabs').addEventListener('click', e => {
+      const b = e.target.closest('[data-path]');
+      if (b) { prop.side = b.dataset.path; renderProp(); }
+    });
+    document.addEventListener('click', e => {
+      const b = e.target.closest('[data-path-target]');
+      if (b) analyzeTarget(b.dataset.pathTarget);
+    });
+  }
+
+  function openProp() {
+    if (!prop.query) {
+      try {
+        const q = JSON.parse(storeGet('hamdash.propTarget'));
+        if (q && (q.target || q.tlat != null)) { if (q.target) $('#propInput').value = q.target; analyzePath(q); return; }
+      } catch { /* nothing saved */ }
+    }
+    renderProp();
+  }
+
+  const TAB_NAMES = [['weather', 'Space weather'], ['prop', 'Propagation'], ['repeaters', 'Repeaters'], ['aprs', 'APRS'], ['pota', 'POTA'], ['sats', 'Satellites'], ['lookup', 'Callsign lookup']];
 
   // Per-browser: hide tabs someone doesn't use (Space weather always stays).
   function applyTabVisibility() {
@@ -2201,11 +2479,12 @@
 
   // [view, element to highlight, title, text]. Steps on hidden tabs are skipped.
   const TOUR_STEPS = [
-    ['weather', '#viewTabs', 'Six views', 'Space weather, repeaters, APRS, POTA, satellite passes and callsign lookup. Hide the ones you don’t use in settings (⚙ at the top right).'],
+    ['weather', '#viewTabs', 'Seven views', 'Space weather, propagation paths, repeaters, APRS, POTA, satellite passes and callsign lookup. Hide the ones you don’t use in settings (⚙ at the top right).'],
     ['weather', '#tiles', 'Conditions right now', 'Solar flux, sunspots, the K-index and more. Higher solar flux generally means better high-band (20–10 m) conditions; a high K-index means a disturbed, noisy ionosphere.'],
     ['weather', '#bandsTable', 'Which bands are open', '“At your QTH” is an estimate from the nearest ionosonde. “Heard nearby” is measured: stations actually decoded near you in the last 15 minutes.'],
     ['weather', '#stormStatus', 'Storm safety', 'Safe, Caution or Danger for your station, from National Weather Service alerts and an optional lightning sensor. Danger also shows a red banner on every tab.'],
     ['weather', '#panel-grayline', 'Maps', 'Click a map, then scroll to zoom, or pinch on a phone. The layers button switches between Dark, Streets, Satellite and Topo. The golden band is the gray line, where low-band DX is often best.'],
+    ['prop', '#propForm', 'Propagation to anywhere', 'Enter a callsign, grid or prefix, or click the map, to see how each band should work to it now and over the next 24 hours, with PSKReporter showing what’s actually getting through. Save paths you care about to get Home Assistant sensors for them.'],
     ['repeaters', '#rptMap', 'Repeaters near you', 'Click a dot to find it in the list, with frequency, offset and tone. Confirm details before you transmit, since listings can be out of date.'],
     ['aprs', '#aprsMap', 'Live APRS', 'Stations heard around you right now: mobiles show as arrows with their tracks, plus digipeaters, iGates and weather stations. This is receive-only.'],
     ['sats', '#passTable', 'Satellite passes', 'Upcoming passes over you. Pick one to see its sky track and Doppler-corrected frequencies.'],
@@ -2529,6 +2808,7 @@
     tickClocks();
     setInterval(tickClocks, 1000);
     bindSettings();
+    bindProp();
     bindSetup();
     bindTour();
     bindMapTabs();
@@ -2655,7 +2935,7 @@
     showView(location.hash.slice(1) || storeGet('hamdash.view') || 'weather');
     startOnboarding();
 
-    loadLand(); loadSolar(); loadIono(); loadSpots(); loadPsk(); loadCycle(); loadActivity(); loadStorm();
+    loadLand(); loadSolar(); loadIono(); loadSpots(); loadPsk(); loadCycle(); loadActivity(); loadStorm(); loadSavedPaths();
     setInterval(loadSolar, 5 * 60000);
     setInterval(loadIono, 10 * 60000);
     setInterval(loadSpots, 30000);

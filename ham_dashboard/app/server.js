@@ -12,6 +12,8 @@ const HamCore = require('./static/hamcore');
 const { HomeAssistant } = require('./ha');
 const SATS = require('./sats');
 const VHF = require('./vhf');
+const Prop = require('./prop');
+const Prefixes = require('./prefixes');
 const { SourceStatus } = require('./status');
 
 const PORT = +(process.env.PORT || 8099);
@@ -252,7 +254,7 @@ function ionosondes() {
         return {
           code: s.station?.code, name: s.station?.name,
           lat: num(s.station?.latitude), lon,
-          time: s.time + 'Z', cs: s.cs, mufd: num(s.mufd), fof2: num(s.fof2),
+          time: s.time + 'Z', cs: s.cs, mufd: num(s.mufd), fof2: num(s.fof2), md: num(s.md),
         };
       })
       .filter(s => s.mufd && s.lat !== null && Date.parse(s.time) > cutoff && s.cs > 0);
@@ -523,7 +525,7 @@ function pskArea(field) {
     for (const m of xml.matchAll(/<receptionReport\s([^>]*?)\/>/g)) {
       const a = {};
       for (const x of m[1].matchAll(/(\w+)="([^"]*)"/g)) a[x[1]] = x[2];
-      reports.push({ rx: a.receiverCallsign, rxGrid: a.receiverLocator, tx: a.senderCallsign, txGrid: a.senderLocator, txCountry: a.senderDXCC, freq: num(a.frequency), mode: a.mode });
+      reports.push({ rx: a.receiverCallsign, rxGrid: a.receiverLocator, tx: a.senderCallsign, txGrid: a.senderLocator, txCountry: a.senderDXCC, freq: num(a.frequency), mode: a.mode, snr: num(a.sNR), time: num(a.flowStartSeconds) });
     }
     return { fetched: Date.now(), reports };
   });
@@ -573,6 +575,171 @@ async function vhfOpenings(pos) {
   const result = { field, windowMin: ACTIVITY_WINDOW_MIN, fetched: new Date(fetched).toISOString(), ...VHF.analyze(reports, pos) };
   const qth = gridToLatLon(options.grid);
   return qth && distanceKm(qth, pos) < 10 ? vhfTracker.update(fetched, result) : result;
+}
+
+// ---------------------------------------------------------------- point-to-point paths
+
+// Conditions shared by every path: sunspot number (from the solar flux), Kp and
+// the live ionosondes that anchor the model.
+async function pathInputs() {
+  const [hq, kpData, iono] = await Promise.all([hamqsl(), kp(), ionosondes()].map(settle));
+  const now = Date.now();
+  const past = (kpData || []).filter(k => k.kind !== 'predicted' && Date.parse(k.time) <= now);
+  const kpNow = past.length ? past[past.length - 1].kp : hq?.k ?? null;
+  return {
+    ssn: Prop.ssnFromSfi(hq?.sfi) ?? hq?.ssn ?? 100, sfi: hq?.sfi ?? null,
+    kp: kpNow ?? 2, stations: iono || [],
+  };
+}
+
+const GRID_RE = /^[A-R]{2}\d{2}([A-X]{2})?$/i;
+
+// A target from a map click (tlat/tlon), a grid square, a callsign (QRZ/FCC
+// location when there is one) or a prefix. Returns null if it can't be placed.
+async function resolveTarget(q) {
+  const tlat = num(q.get('tlat')), tlon = num(q.get('tlon'));
+  if (tlat !== null && tlon !== null && Math.abs(tlat) <= 90 && Math.abs(tlon) <= 180) {
+    const grid = HamCore.latLonToGrid(tlat, tlon);
+    return { kind: 'point', label: grid, lat: tlat, lon: tlon, grid };
+  }
+  const t = String(q.get('target') || '').trim().toUpperCase();
+  if (GRID_RE.test(t)) {
+    const grid = t.slice(0, 4) + t.slice(4).toLowerCase();
+    return { kind: 'grid', label: grid, ...gridToLatLon(t), grid };
+  }
+  if (!/^[A-Z0-9/]{1,15}$/.test(t)) {
+    const err = new Error('Enter a callsign, grid square or prefix');
+    err.status = 400;
+    throw err;
+  }
+  if (/^[A-Z0-9/]{3,15}$/.test(t) && /\d[A-Z]+$/.test(t)) {
+    const r = await lookupCall(t).catch(() => null);
+    if (r && !r.notFound && Number.isFinite(r.lat) && Number.isFinite(r.lon)) {
+      return { kind: 'call', label: t, lat: r.lat, lon: r.lon, grid: r.grid || HamCore.latLonToGrid(r.lat, r.lon), name: r.name || '', place: [r.city, r.state, r.country].filter(Boolean).join(', '), source: (r.sources || []).join(', ') };
+    }
+  }
+  const p = Prefixes.locate(t);
+  if (!p) return null;
+  return { kind: 'prefix', label: t, lat: p.lat, lon: p.lon, grid: HamCore.latLonToGrid(p.lat, p.lon).slice(0, 4), place: p.area ? `${p.area}, ${p.name}` : p.name, approximate: true };
+}
+
+// PSKReporter evidence for a path. The home field's query is shared with band
+// activity. The target's field needs its own query, so those are limited to one
+// new field every 5 minutes, as PSKReporter asks; until then only the "heard
+// near you" direction is available.
+const TARGET_QUERY_GAP = 5 * MIN;
+let lastTargetQuery = 0;
+
+function freshCached(key, ttl) {
+  const h = cache.get(key);
+  return h && 'v' in h && Date.now() - h.t < ttl ? h.v : null;
+}
+
+async function pathEvidence(from, to, { extraQuery = true, approximate = false } = {}) {
+  const homeField = HamCore.latLonToGrid(from.lat, from.lon).slice(0, 2);
+  const farField = HamCore.latLonToGrid(to.lat, to.lon).slice(0, 2);
+  const home = await pskArea(homeField).catch(() => null);
+  let far = farField === homeField ? home : freshCached(`psk-area-${farField}`, 5 * MIN);
+  let waitUntil = null;
+  if (!far && extraQuery) {
+    if (Date.now() - lastTargetQuery >= TARGET_QUERY_GAP) {
+      lastTargetQuery = Date.now();
+      far = await pskArea(farField).catch(() => null);
+    } else waitUntil = new Date(lastTargetQuery + TARGET_QUERY_GAP).toISOString();
+  }
+  const reports = [...(home?.reports || []), ...(far && far !== home ? far.reports : [])];
+  return {
+    windowMin: ACTIVITY_WINDOW_MIN,
+    directions: { toYou: !!home, fromYou: !!far },
+    waitUntil,
+    bands: Prop.measured(reports, from, to, { nearKm: 800, farNearKm: approximate ? 1500 : 800 }),
+  };
+}
+
+// The full analysis for one path, trimmed for the browser: per-hour detail
+// keeps only the ratings and MUF.
+function pathReport(from, to, inputs) {
+  const a = Prop.analyzePath(from, to, { ...inputs, now: Date.now() });
+  const side = s => ({
+    ...s, summary: Prop.summarize(s),
+    hours: s.hours.map(h => ({ t: h.t, muf: h.muf, bands: Object.fromEntries(Object.entries(h.bands).map(([b, x]) => [b, x.rating])) })),
+  });
+  return { short: side(a.short), long: side(a.long), medianRatio: a.medianRatio, anchorStations: a.stations };
+}
+
+// ---------------------------------------------------------------- saved paths
+
+const pathsFile = () => path.join(DATA_DIR, 'paths.json');
+const MAX_SAVED_PATHS = 10;
+
+function readPaths() {
+  try {
+    const list = JSON.parse(fs.readFileSync(pathsFile(), 'utf8'));
+    return Array.isArray(list) ? list : [];
+  } catch { return []; }
+}
+
+async function handlePaths(req, res, url) {
+  let list = readPaths();
+  if (req.method === 'DELETE') {
+    list = list.filter(p => p.id !== url.searchParams.get('id'));
+  } else {
+    let input;
+    try { input = JSON.parse(await readBody(req) || '{}'); } catch { return send(res, 400, { error: 'Invalid request' }); }
+    const label = String(input.label || '').replace(/\s+/g, ' ').trim().slice(0, 30);
+    const t = input.target || {};
+    if (!label) return send(res, 400, { error: 'Give the path a name.' });
+    if (!Number.isFinite(t.lat) || !Number.isFinite(t.lon) || Math.abs(t.lat) > 90 || Math.abs(t.lon) > 180) return send(res, 400, { error: 'The path has no location.' });
+    if (list.length >= MAX_SAVED_PATHS) return send(res, 400, { error: `You can save up to ${MAX_SAVED_PATHS} paths. Remove one first.` });
+    // The ID becomes the sensor name, so it never changes once saved.
+    let id = slug(label) || 'path';
+    for (let n = 2; list.some(p => p.id === id); n++) id = `${slug(label) || 'path'}_${n}`;
+    list.push({
+      id, label, lat: +t.lat.toFixed(4), lon: +t.lon.toFixed(4),
+      grid: String(t.grid || HamCore.latLonToGrid(t.lat, t.lon)).slice(0, 6), target: String(t.label || '').slice(0, 15),
+      place: String(t.place || '').slice(0, 80), approximate: !!t.approximate, added: new Date().toISOString(),
+    });
+  }
+  try { fs.writeFileSync(pathsFile(), JSON.stringify(list, null, 1)); } catch (e) { return send(res, 500, { error: `Couldn't save: ${e.message}` }); }
+  if (ha.enabled) setTimeout(publishHa, 1000);
+  return send(res, 200, { paths: list });
+}
+
+// One event per band per saved path when it turns good, at most every 2 hours.
+const pathEventContext = new Map();
+const pathTracker = new Prop.PathTracker((id, band) => {
+  const c = pathEventContext.get(id);
+  if (!c || !ha.enabled) return;
+  ha.fireEvent('ham_dashboard_path_open', {
+    path: id, label: c.sp.label, band, muf_mhz: c.s.now.muf, target_grid: c.sp.grid,
+    heard: c.ev.bands[band]?.toYou ?? 0, distance_km: c.s.km, bearing: c.s.bearing,
+  });
+});
+
+async function pathEntities(pos) {
+  const saved = readPaths();
+  if (!saved.length) return [];
+  const inputs = await pathInputs();
+  const out = [];
+  for (const sp of saved) {
+    const r = pathReport(pos, sp, inputs);
+    // Sensors use only the shared home query, never extra PSKReporter traffic.
+    const ev = await pathEvidence(pos, sp, { extraQuery: false, approximate: sp.approximate });
+    const s = r.short;
+    const bands = Object.fromEntries(Object.entries(s.now.bands).map(([b, x]) => [b, x.rating]));
+    pathEventContext.set(sp.id, { sp, s, ev });
+    pathTracker.update(sp.id, bands);
+    const nextGood = Object.fromEntries(Object.entries(s.summary.windows).map(([b, w]) => [b, w[0]?.start ?? null]));
+    out.push([`sensor.ham_path_${sp.id}`, s.summary.best ? s.summary.best.band : 'None', {
+      friendly_name: `${sp.label} best band`, icon: 'mdi:map-marker-path',
+      best_rating: s.summary.best?.rating ?? null, target: sp.target || sp.grid, grid: sp.grid,
+      distance_km: s.km, bearing: s.bearing, muf_mhz: s.now.muf,
+      bands, next_good: nextGood,
+      long_path_best: r.long.summary.best?.band ?? null,
+      heard_nearby: Object.fromEntries(Object.entries(ev.bands).map(([b, x]) => [b, x.toYou])),
+    }]);
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------- storm safety (NWS + local lightning sensor)
@@ -808,6 +975,8 @@ async function haEntities() {
         }]);
       }
     } catch (e) { console.warn('[ha] vhf:', e.message); }
+
+    try { out.push(...await pathEntities(pos)); } catch (e) { console.warn('[ha] paths:', e.message); }
   }
   return out;
 }
@@ -1122,6 +1291,24 @@ async function api(route, q, res) {
       if (lat === null || lon === null || Math.abs(lat) > 90 || Math.abs(lon) > 180) return send(res, 400, { error: 'Set a valid grid square' });
       return send(res, 200, await vhfOpenings({ lat, lon }));
     }
+    case '/api/path': {
+      const lat = num(q.get('lat')), lon = num(q.get('lon'));
+      if (lat === null || lon === null || Math.abs(lat) > 90 || Math.abs(lon) > 180) return send(res, 400, { error: 'Set a valid grid square' });
+      const from = { lat, lon };
+      let target;
+      try { target = await resolveTarget(q); } catch (e) { return send(res, e.status || 502, { error: e.message }); }
+      if (!target) return send(res, 404, { error: `Couldn’t find a location for ${String(q.get('target') || '').toUpperCase()}. Try a grid square.` });
+      if (distanceKm(from, target) < 30) return send(res, 400, { error: 'That’s right next to you. Pick a target farther away.' });
+      const inputs = await pathInputs();
+      return send(res, 200, {
+        from, target,
+        inputs: { ssn: Math.round(inputs.ssn), sfi: inputs.sfi, kp: inputs.kp, ionosondes: inputs.stations.length },
+        ...pathReport(from, target, inputs),
+        measured: await pathEvidence(from, target, { approximate: target.approximate }),
+      });
+    }
+    case '/api/paths':
+      return send(res, 200, { paths: readPaths(), max: MAX_SAVED_PATHS });
     case '/api/status': {
       const a = aprs.snapshot();
       return send(res, 200, {
@@ -1202,6 +1389,7 @@ http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://localhost');
     if (url.pathname === '/api/setup' && req.method === 'POST') return await handleSetup(req, res);
+    if (url.pathname === '/api/paths' && (req.method === 'POST' || req.method === 'DELETE')) return await handlePaths(req, res, url);
     if (url.pathname.startsWith('/api/')) return await api(url.pathname, url.searchParams, res);
     return serveStatic(url.pathname, res);
   } catch (e) {

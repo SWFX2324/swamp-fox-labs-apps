@@ -8,6 +8,10 @@ and dark mode.
 
 ![Space weather view](https://raw.githubusercontent.com/SWFX2324/swamp-fox-labs-apps/main/docs/screenshot-weather.png)
 
+- **Propagation** tab: how each HF band should work from your QTH to any callsign,
+  grid, prefix or point on the map, right now and hour by hour for the next 24 hours,
+  on the short and long path, with PSKReporter decodes as a reality check. Save paths
+  to get Home Assistant sensors and alerts for them
 - HF band conditions, 160 m – 10 m: N0NBH/HamQSL ratings plus a local estimate from
   the nearest ionosonde, and measured activity heard nearby
   from PSKReporter

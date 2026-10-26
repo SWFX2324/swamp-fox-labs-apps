@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.0.0
+
+- **Propagation tab**: point-to-point analysis from your QTH to any callsign, grid
+  square, prefix or point on the map.
+  - Ratings for every HF band on the short and long path right now, with what
+    limits each one (the MUF, daytime absorption, or the auroral zone in a storm).
+  - A 24-hour band-by-hour outlook, with the good windows listed.
+  - PSKReporter decodes between your area and the target's, in both directions, as
+    a reality check.
+  - A map with the short and long path and the control points where the MUF is set.
+  - Opens from every DX cluster spot (↗) and from Callsign lookup.
+  - The estimate is a simplified ITU-R P.533-style model anchored to live
+    ionosondes, not VOACAP. See the documentation for how it works.
+- Callsigns without a QRZ or FCC record are placed from their prefix, split by call
+  area for the US, Canada, Japan, Australia, Russia and Brazil.
+- **Saved paths**: keep up to 10 paths. Each gets a `sensor.ham_path_<name>` sensor
+  with the best band now, every band's rating and the next good hour, and a
+  `ham_dashboard_path_open` event when a band on it turns good.
+- Entity IDs, attributes and event names are now stable: from 1.0 on they won't
+  change without notice in the changelog.
+
 ## 0.9.1
 
 - **Data sources and connections** in settings: when each data source last

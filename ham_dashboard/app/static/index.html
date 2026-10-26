@@ -15,6 +15,7 @@
     </div>
     <nav class="tabs views" id="viewTabs" aria-label="Dashboard sections">
       <button type="button" data-view="weather" aria-selected="true"><span class="long">Space weather</span><span class="short">Weather</span></button>
+      <button type="button" data-view="prop" aria-selected="false"><span class="long">Propagation</span><span class="short">Paths</span></button>
       <button type="button" data-view="repeaters" aria-selected="false">Repeaters</button>
       <button type="button" data-view="aprs" aria-selected="false">APRS</button>
       <button type="button" data-view="pota" aria-selected="false">POTA</button>
@@ -200,6 +201,54 @@
         <summary>NOAA 3-day forecast (full text)</summary>
         <pre id="forecastText"></pre>
       </details>
+    </section>
+  </main>
+
+  <main class="grid view" id="view-prop" hidden>
+    <section class="card span-12" aria-labelledby="h-prop">
+      <div class="card-head">
+        <h2 id="h-prop">Path analysis</h2>
+        <span class="meta" id="propMeta"></span>
+      </div>
+      <form class="lookup-form" id="propForm" role="search">
+        <input id="propInput" class="mono" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="15" placeholder="Callsign, grid or prefix, e.g. JA1, JO31" aria-label="Callsign, grid square or prefix">
+        <button type="submit">Analyze</button>
+      </form>
+      <div class="chips recent" id="propSaved"></div>
+      <p class="note" id="propHint">Pick a target to see how each HF band should work to it now and over the next 24 hours, or click anywhere on the map.</p>
+      <p class="error" id="propError" hidden></p>
+    </section>
+
+    <section class="card span-5" aria-labelledby="h-propnow" id="propNowCard" hidden>
+      <div class="card-head">
+        <h2 id="h-propnow">Right now</h2>
+        <button type="button" class="secondary small" id="propSave">☆ Save path</button>
+      </div>
+      <div id="propTarget"></div>
+      <div class="table-wrap"><table class="bands prop-now" id="propNow"></table></div>
+      <p class="note" id="propNowNote"></p>
+    </section>
+
+    <section class="card span-7 prop-map-card" aria-labelledby="h-propmap">
+      <div class="card-head">
+        <h2 id="h-propmap">Path map</h2>
+      </div>
+      <div class="map-wrap"><div id="propMap" class="lmap world prop-map" role="region" aria-label="Map of the propagation path. Click to analyze a path to that point."></div></div>
+      <div class="map-legend" id="propLegend"></div>
+    </section>
+
+    <section class="card span-12" aria-labelledby="h-propday" id="propDayCard" hidden>
+      <div class="card-head">
+        <h2 id="h-propday">Next 24 hours</h2>
+        <div class="tabs" role="tablist" id="propPathTabs">
+          <button role="tab" data-path="short" aria-selected="true">Short path</button>
+          <button role="tab" data-path="long" aria-selected="false">Long path</button>
+        </div>
+      </div>
+      <p class="prop-windows" id="propWindows"></p>
+      <div class="table-wrap"><table class="prop-grid" id="propGrid"></table></div>
+      <div class="map-legend" id="propGridLegend"></div>
+      <p class="note" id="propDayNote"></p>
     </section>
   </main>
 
