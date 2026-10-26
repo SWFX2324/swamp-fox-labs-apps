@@ -38,6 +38,7 @@ and dark mode.
 - **Reference** tab: the US amateur band plan by license class, and GMRS/FRS,
   MURS and CB channel charts
 - **NCDXF beacons**: which beacon is on each band right now, rated for your path
+- **WWV and WWVH**: path ratings to NIST’s time stations on every frequency, now and for the next 24 hours
 - **Callsign lookup** tab: QRZ.com (with your own login) or free FCC data for US
   calls, with beam heading and great-circle path from your QTH
 

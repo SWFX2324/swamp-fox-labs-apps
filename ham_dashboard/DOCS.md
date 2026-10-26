@@ -215,6 +215,23 @@ The schedule comes from the clock (it's synchronized to UTC), so it needs no dat
 source. Beacons are sometimes off the air; [NCDXF](https://www.ncdxf.org/beacon/)
 lists their status.
 
+### WWV and WWVH time signals
+
+Below the beacons. NIST's time stations transmit around the clock: WWV in Fort
+Collins, Colorado on 2.5, 5, 10, 15, 20 and 25 MHz, and WWVH on Kauai, Hawaii on
+2.5, 5, 10 and 15 MHz. Because they're always on, at known power from known places,
+they're the simplest band check there is: if you hear WWV on 15 MHz, 15 MHz is open
+toward Colorado right now.
+
+- A tile for each station shows its best frequency for your path right now, the
+  distance and beam heading, and a countdown to its hourly space weather report
+  (solar flux, A and K index: WWV at 18 minutes past the hour, WWVH at 45).
+- The grid rates every frequency now and for each of the next 24 hours.
+- Click a station to analyze the full path to it.
+
+WWV and WWVH share four frequencies, so you may hear both at once: WWV announces the
+time in a male voice, WWVH in a female voice just before.
+
 ### Saved paths
 
 **☆ Save path** keeps up to 10 paths you care about (a club station, a country you

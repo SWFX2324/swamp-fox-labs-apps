@@ -2257,6 +2257,14 @@
       const b = e.target.closest('[data-path-target]');
       if (b) analyzeTarget(b.dataset.pathTarget);
     });
+    $('#timeStations').addEventListener('click', e => {
+      const b = e.target.closest('[data-timesig]');
+      const st = b && REF.TIME_STATIONS.find(x => x.call === b.dataset.timesig);
+      if (!st) return;
+      $('#propInput').value = st.call;
+      analyzePath({ tlat: st.lat, tlon: st.lon, label: st.call, place: st.place });
+      $('#h-propnow').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+    });
     $('#beaconTable').addEventListener('click', e => {
       const b = e.target.closest('[data-beacon]');
       const bc = b && REF.BEACONS[+b.dataset.beacon];
@@ -2306,6 +2314,11 @@
   // Once a second: who's on the air now on each band, and the countdown.
   function tickBeacons(force = false) {
     if (currentView !== 'prop' && !force) return;
+    if (Date.now() - timesig.loadedAt > 10 * 60000 || (timesig.key && timesig.key !== station().grid)) loadTimeSignals();
+    for (const el of document.querySelectorAll('#timeStations [data-alert]')) {
+      const st = REF.TIME_STATIONS.find(x => x.call === el.dataset.alert);
+      if (st) el.textContent = alertText(st);
+    }
     if (gridToLatLon(station().grid) && (beacons.key !== station().grid || Date.now() - beacons.loadedAt > 5 * 60000)) { loadBeacons(); return; }
     const s = REF.beaconSchedule(Date.now());
     const sig = s.bands.map(b => b.now).join();
@@ -2328,6 +2341,67 @@
     }
   }
 
+  // ------------------------------------------------------------ WWV / WWVH time signals
+
+  const timesig = { data: null, error: null, loadedAt: 0, key: '' };
+
+  async function loadTimeSignals() {
+    const pos = gridToLatLon(station().grid);
+    if (!pos) { timesig.data = null; renderTimeSignals(); return; }
+    timesig.key = station().grid;
+    timesig.loadedAt = Date.now();
+    try { timesig.data = await api(`api/timesignals?lat=${pos.lat.toFixed(4)}&lon=${pos.lon.toFixed(4)}`); timesig.error = null; } catch (e) { timesig.error = e.message; }
+    renderTimeSignals();
+  }
+
+  // Highest frequency rated good right now, else fair.
+  function bestTimeFreq(s) {
+    for (const want of ['good', 'fair']) {
+      const f = [...s.freqs].reverse().find(x => x.now === want);
+      if (f) return f;
+    }
+    return null;
+  }
+
+  const alertText = st => {
+    const m = REF.minutesToAlert(st, Date.now());
+    return m === 0 ? 'Space weather report on now' : `Space weather report in ${m} min (:${st.alertMinute})`;
+  };
+
+  function renderTimeSignals() {
+    const pos = gridToLatLon(station().grid);
+    if (!pos) {
+      $('#timeStations').innerHTML = '<p class="empty">Set your grid square to rate the paths to WWV and WWVH.</p>';
+      $('#timeGrid').innerHTML = '';
+      return;
+    }
+    const d = timesig.data;
+    $('#timeMeta').textContent = timesig.error || (d ? `Ratings from ${ago(d.computed)}` : 'Loading…');
+    $('#timeStations').innerHTML = REF.TIME_STATIONS.map(st => {
+      const s = d?.stations.find(x => x.call === st.call);
+      const best = s && bestTimeFreq(s);
+      return `<div class="tile time-tile">
+        <span class="label"><button type="button" class="call-link mono" data-timesig="${st.call}" title="Analyze the path to ${st.call}">${st.call}</button> <span class="meta">${esc(st.place)}</span></span>
+        <span class="value">${best ? `${best.mhz} MHz` : s ? 'None open' : '—'}</span>
+        <span class="sub">${best ? `Best now · ${RATING_LABEL[best.now]}` : s ? 'No frequency rated fair or better right now' : ''}</span>
+        <span class="sub">${s ? `${fmtDist(s.km)} · ${s.bearing}° ${compass(s.bearing)}` : ''}</span>
+        <span class="sub time-alert" data-alert="${st.call}">${alertText(st)}</span>
+      </div>`;
+    }).join('');
+    if (!d) { $('#timeGrid').innerHTML = ''; return; }
+    const start = Date.parse(d.stations[0].hourStart);
+    const hours = Array.from({ length: 24 }, (_, i) => start + i * 3600_000);
+    const head = hours.map((t, i) => {
+      const dt = new Date(t), hr = useUtc() ? dt.getUTCHours() : dt.getHours();
+      return `<th scope="col" title="${esc(clockDayHour(t))}">${hr % 3 === 0 || i === 0 ? esc(clockHour(t)) : ''}</th>`;
+    }).join('');
+    const cell = (r, when) => `<td class="r-${r}" title="${esc(`${when}: ${RATING_LABEL[r]}`)}"><span class="sr-only">${RATING_LABEL[r]}</span></td>`;
+    const rows = d.stations.flatMap(s => [...s.freqs].reverse().map(f => `<tr><th scope="row">${s.call} <span class="mono">${f.mhz}</span></th>${
+      cell(f.now, `${s.call} ${f.mhz} MHz now`)}<td class="gap"></td>${f.hours.map((r, i) => cell(r, `${s.call} ${f.mhz} MHz · ${clockDayHour(hours[i])}`)).join('')}</tr>`)).join('');
+    $('#timeGrid').innerHTML = `<thead><tr><th></th><th scope="col">Now</th><th class="gap"></th>${head}</tr></thead><tbody>${rows}</tbody>`;
+    $('#timeLegend').innerHTML = ['good', 'fair', 'poor', 'closed'].map(r => legendKey('', RATING_LABEL[r]).replace('<span class="sw" style="">', `<span class="sw r-${r}">`)).join('');
+  }
+
   // How often the model agreed with real long-distance paths heard nearby, from
   // the app's own accuracy log. Shown once there's enough to say something.
   let accuracyAt = 0;
@@ -2345,6 +2419,7 @@
 
   function openProp() {
     loadAccuracy();
+    if (!timesig.data || timesig.key !== station().grid) loadTimeSignals(); else renderTimeSignals();
     if (!beacons.data || beacons.key !== station().grid) loadBeacons(); else renderBeacons();
     if (!prop.query) {
       try {
@@ -3002,6 +3077,7 @@
     if (currentView === 'sats') loadSats();
     if (look.result) renderLookup();
     if (prop.data) renderProp();
+    if (timesig.data) renderTimeSignals();
   }
 
   // ------------------------------------------------------------ loaders

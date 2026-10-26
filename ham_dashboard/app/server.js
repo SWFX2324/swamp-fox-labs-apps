@@ -683,6 +683,33 @@ function beaconRatings(pos) {
   });
 }
 
+// ---------------------------------------------------------------- WWV / WWVH time signals
+
+// Path ratings from the QTH to WWV and WWVH on each of their frequencies, now
+// and for each of the next 24 hours, from the same model as path analysis.
+function timeSignals(pos) {
+  return cached(`timesignals-${pos.lat.toFixed(2)},${pos.lon.toFixed(2)}`, 10 * MIN, async () => {
+    const inputs = await pathInputs();
+    const now = Date.now();
+    return {
+      computed: new Date(now).toISOString(),
+      stations: Reference.TIME_STATIONS.map(st => {
+        const bands = st.freqs.map(([mhz]) => [String(mhz), mhz]);
+        const p = Prop.analyzePath(pos, st, { ...inputs, now, bands }).short;
+        return {
+          call: st.call, km: Math.round(p.km), bearing: Math.round(p.bearing), hops: p.hops,
+          freqs: st.freqs.map(([mhz, kw]) => {
+            const key = String(mhz);
+            const x = p.now.bands[key];
+            return { mhz, kw, now: x.rating, limit: x.limit, hours: p.hours.map(h => h.bands[key].rating) };
+          }),
+          hourStart: p.hours[0]?.t ?? null,
+        };
+      }),
+    };
+  });
+}
+
 // ---------------------------------------------------------------- model accuracy log
 
 // Every 15 minutes, compare the model with the long-distance paths PSKReporter
@@ -1376,6 +1403,11 @@ async function api(route, q, res) {
       try { body = fs.readFileSync(accuracyLog.file); } catch { /* no checks yet */ }
       res.writeHead(200, { ...SECURITY_HEADERS, 'Content-Type': 'application/x-ndjson', 'Content-Disposition': 'attachment; filename="ham-dashboard-accuracy.jsonl"', 'Cache-Control': 'no-store' });
       return res.end(body);
+    }
+    case '/api/timesignals': {
+      const lat = num(q.get('lat')), lon = num(q.get('lon'));
+      if (lat === null || lon === null || Math.abs(lat) > 90 || Math.abs(lon) > 180) return send(res, 400, { error: 'Set a valid grid square' });
+      return send(res, 200, await timeSignals({ lat, lon }));
     }
     case '/api/beacons': {
       const lat = num(q.get('lat')), lon = num(q.get('lon'));

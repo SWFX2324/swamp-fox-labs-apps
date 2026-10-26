@@ -121,5 +121,29 @@
     };
   }
 
-  root.HamReference = { US_BAND_PLAN, LICENSE_CLASSES, MODE_LABEL, GMRS_FRS, MURS, CB, BEACON_BANDS, BEACONS, beaconSchedule, privileges };
+  // NIST time-signal stations. Both send the time around the clock in voice
+  // and tones, and read out a geophysical alert (solar flux, A and K index)
+  // once an hour: WWV at 18 minutes past, WWVH at 45. Power in kW.
+  const TIME_STATIONS = [
+    {
+      call: 'WWV', place: 'Fort Collins, Colorado', lat: 40.6781, lon: -105.0469, alertMinute: 18, voice: 'male',
+      freqs: [[2.5, 2.5], [5, 10], [10, 10], [15, 10], [20, 2.5], [25, 2.5]],
+    },
+    {
+      call: 'WWVH', place: 'Kekaha, Kauai, Hawaii', lat: 21.9886, lon: -159.7642, alertMinute: 45, voice: 'female',
+      freqs: [[2.5, 5], [5, 10], [10, 10], [15, 10]],
+    },
+  ];
+
+  // Minutes until a station's next geophysical alert at time t (ms).
+  function minutesToAlert(station, t) {
+    const d = new Date(t);
+    const now = d.getUTCMinutes() + d.getUTCSeconds() / 60;
+    return Math.ceil((station.alertMinute - now + 60) % 60);
+  }
+
+  root.HamReference = {
+    US_BAND_PLAN, LICENSE_CLASSES, MODE_LABEL, GMRS_FRS, MURS, CB, BEACON_BANDS, BEACONS, beaconSchedule,
+    TIME_STATIONS, minutesToAlert, privileges,
+  };
 })(typeof self !== 'undefined' ? self : this);

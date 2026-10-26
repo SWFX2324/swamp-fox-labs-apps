@@ -273,7 +273,18 @@
       </div>
       <div class="beacon-now" id="beaconNow"></div>
       <div class="table-wrap"><table class="data beacon-table" id="beaconTable"></table></div>
-      <p class="note">Eighteen beacons take turns on these five frequencies. Each sends its callsign in CW, then four dashes at 100 W, 10 W, 1 W and 0.1 W; hearing the weaker dashes means a better path. Every beacon comes around on every band each 3 minutes, so you can check a band in seconds. Ratings are the propagation estimate for your path to each beacon right now. Some beacons are off the air at times; see <a href="https://www.ncdxf.org/beacon/" target="_blank" rel="noopener">NCDXF</a> for status.</p>
+      <p class="note" id="beaconNote">Eighteen beacons take turns on these five frequencies. Each sends its callsign in CW, then four dashes at 100 W, 10 W, 1 W and 0.1 W; hearing the weaker dashes means a better path. Every beacon comes around on every band each 3 minutes, so you can check a band in seconds. Ratings are the propagation estimate for your path to each beacon right now. Some beacons are off the air at times; see <a href="https://www.ncdxf.org/beacon/" target="_blank" rel="noopener">NCDXF</a> for status.</p>
+    </section>
+
+    <section class="card span-12" aria-labelledby="h-time" id="timeCard">
+      <div class="card-head">
+        <h2 id="h-time">WWV and WWVH time signals</h2>
+        <span class="meta" id="timeMeta"></span>
+      </div>
+      <div class="time-stations" id="timeStations"></div>
+      <div class="table-wrap"><table class="prop-grid time-grid" id="timeGrid"></table></div>
+      <div class="map-legend" id="timeLegend"></div>
+      <p class="note">NIST’s time stations transmit around the clock, so they’re the simplest band check there is: if you can hear WWV on a frequency, that frequency is open toward Colorado right now (WWVH: toward Hawaii). Both share 2.5, 5, 10 and 15 MHz, so you may hear them together; WWV announces the time in a male voice, WWVH in a female voice just before. Each reads a space weather report once an hour: WWV at 18 minutes past, WWVH at 45. Ratings are the propagation estimate for your path to each station.</p>
     </section>
   </main>
 

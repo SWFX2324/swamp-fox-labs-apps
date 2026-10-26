@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.0
+
+- **WWV and WWVH time signals** on the Propagation tab: your path rating to NIST's
+  time stations on every frequency (WWV 2.5–25 MHz, WWVH 2.5–15 MHz), now and for
+  the next 24 hours, with the best frequency right now and a countdown to each
+  station's hourly space weather report. Since they're always on the air, they're
+  a quick check of which frequencies are open toward Colorado and Hawaii. Click a
+  station for the full path analysis.
+
 ## 1.2.0
 
 Reliability and security.

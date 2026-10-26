@@ -61,3 +61,19 @@ test('CB channels keep the out-of-order 23-25', () => {
   assert.deepEqual(R.CB.slice(22, 25).map(c => c.mhz), [27.255, 27.235, 27.245]);
   assert.equal(R.CB[8].note, 'Emergency');
 });
+
+test('WWV and WWVH frequencies and report times', () => {
+  const [wwv, wwvh] = R.TIME_STATIONS;
+  assert.deepEqual(wwv.freqs.map(f => f[0]), [2.5, 5, 10, 15, 20, 25]);
+  assert.deepEqual(wwvh.freqs.map(f => f[0]), [2.5, 5, 10, 15]);
+  assert.equal(wwv.alertMinute, 18);
+  assert.equal(wwvh.alertMinute, 45);
+});
+
+test('minutes until the next space weather report', () => {
+  const [wwv, wwvh] = R.TIME_STATIONS;
+  assert.equal(R.minutesToAlert(wwv, Date.parse('2026-10-26T17:10:30Z')), 8);
+  assert.equal(R.minutesToAlert(wwv, Date.parse('2026-10-26T17:18:00Z')), 0);
+  assert.equal(R.minutesToAlert(wwv, Date.parse('2026-10-26T17:19:00Z')), 59);
+  assert.equal(R.minutesToAlert(wwvh, Date.parse('2026-10-26T17:50:00Z')), 55);
+});
