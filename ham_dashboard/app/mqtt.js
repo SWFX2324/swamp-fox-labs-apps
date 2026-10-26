@@ -55,8 +55,10 @@ class MqttClient {
 
   connect() {
     const { host, port, ssl } = this.opts;
+    // A TLS broker must present a certificate valid for host; a self-signed one
+    // fails, with the reason in the app's log and status.
     const sock = ssl
-      ? tls.connect({ host, port: +port, rejectUnauthorized: false })
+      ? tls.connect({ host, port: +port })
       : net.connect(+port, host);
     this.sock = sock;
     let buf = Buffer.alloc(0);

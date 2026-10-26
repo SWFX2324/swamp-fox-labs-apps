@@ -1229,7 +1229,7 @@
   function fillRadiusOptions() {
     const units = station().units;
     const saved = +storeGet(`hamdash.rptRadius.${units}`) || (units === 'mi' ? 50 : 80);
-    $('#rptRadius').innerHTML = RADII[units].map(r => `<option value="${r}"${r === saved ? ' selected' : ''}>${r} ${units}</option>`).join('');
+    $('#rptRadius').replaceChildren(...RADII[units].map(r => new Option(`${r} ${units}`, r, false, r === saved)));
   }
 
   async function loadRepeaters() {
@@ -1599,7 +1599,7 @@
   function fillPotaRanges() {
     const units = station().units, sel = $('#potaRange');
     const saved = storeGet(`hamdash.potaRange.${units}`) || '';
-    sel.innerHTML = `<option value="">Anywhere</option>` + POTA_RANGES[units].map(r => `<option value="${r}">${r.toLocaleString()} ${units}</option>`).join('');
+    sel.replaceChildren(new Option('Anywhere', ''), ...POTA_RANGES[units].map(r => new Option(`${r.toLocaleString()} ${units}`, r)));
     sel.value = POTA_RANGES[units].includes(+saved) ? saved : '';
   }
 

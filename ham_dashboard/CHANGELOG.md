@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.6.2
+
+Fixes for the first GitHub code scanning (CodeQL) results. Nothing changes in
+normal use.
+
+- **MQTT over TLS checks the broker's certificate.** It used to accept any
+  certificate. The Mosquitto app is reached without TLS on Home Assistant's
+  internal network, so this only affects a broker set up for TLS; one with a
+  self-signed certificate is now refused, with the reason in the log.
+- The repeater radius and POTA range menus are built as elements instead of from
+  HTML text.
+- A test escapes the version number fully when matching it.
+
 ## 1.6.1
 
 - **Every Home Assistant user can open the dashboard.** Home Assistant now enforces

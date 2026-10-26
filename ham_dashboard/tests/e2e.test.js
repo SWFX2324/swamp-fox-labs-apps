@@ -52,7 +52,7 @@ test('end to end against fake services', async t => {
     const r = await fetch(`${s.base}/`);
     assert.equal(r.status, 200);
     const html = await r.text();
-    assert.match(html, new RegExp(`app\\.js\\?v=${VERSION.replace(/\./g, '\\.')}`));
+    assert.match(html, new RegExp(`app\\.js\\?v=${VERSION.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
     assert.match(r.headers.get('content-security-policy'), /script-src 'self'/);
     assert.equal(r.headers.get('x-content-type-options'), 'nosniff');
     const js = await fetch(`${s.base}/app.js?v=${VERSION}`, { headers: { 'Accept-Encoding': 'gzip' } });
