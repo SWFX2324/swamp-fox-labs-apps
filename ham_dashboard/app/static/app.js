@@ -150,13 +150,18 @@
     const st = station();
     $('#hdrCall').textContent = st.callsign || (st.type === 'listener' ? 'Listener' : st.type === 'gmrs' ? 'GMRS' : 'Set callsign');
     $('#hdrGrid').textContent = st.grid || 'Set grid';
+    // Flag when this browser isn't using the app's configuration.
+    const o = overrides();
+    $('#hdrOverride').hidden = !o.length;
+    $('#stationBtn').title = o.length ? `Settings · this browser uses its own ${o.join(' and ')}; Home Assistant sensors use the app’s` : 'Settings';
     $('#pskCall').textContent = st.callsign || 'you';
   }
 
   // ------------------------------------------------------------ solar tiles
 
-  function tile(label, value, unit, sub, extra = '') {
-    return `<div class="tile"><span class="label">${esc(label)}${extra}</span>
+  // termKey makes the label a tappable glossary term.
+  function tile(label, value, unit, sub, extra = '', termKey = null) {
+    return `<div class="tile"><span class="label">${termKey ? term(termKey, label) : esc(label)}${extra}</span>
       <span class="value">${value == null || value === '' ? '—' : esc(value)}${unit && value != null ? `<span class="unit">${esc(unit)}</span>` : ''}</span>
       <span class="sub" title="${esc(sub)}">${esc(sub || '')}</span></div>`;
   }
@@ -169,14 +174,14 @@
     const ks = kpStatus(kp);
     const bz = w.bz ?? h.bz;
     $('#tiles').innerHTML = [
-      tile('Solar flux (SFI)', h.sfi ?? w.f107, '', '10.7 cm radio flux'),
-      tile('Sunspot number', h.ssn, '', 'Daily SSN'),
-      tile('A-index', h.a, '', h.geomagfield ? `Field ${h.geomagfield.toLowerCase()}` : 'Daily geomagnetic'),
-      tile('K-index', kp == null ? null : (Math.round(kp * 100) / 100).toString(), '', ks.label, ' ' + pill(ks.cls, ks.cls === 'good' ? 'OK' : ks.cls === 'fair' ? 'Active' : 'Storm')),
-      tile('X-ray flux', x.current || h.xray, '', x.max6h ? `6 h peak ${x.max6h}` : 'GOES 0.1–0.8 nm'),
-      tile('Solar wind', w.speed ?? h.solarwind, 'km/s', w.bt != null ? `Bt ${w.bt} nT` : 'Proton speed'),
-      tile('Bz (IMF)', bz, 'nT', bz == null ? '' : bz < 0 ? 'Southward: storms more likely' : 'Northward: quieter'),
-      tile('Noise floor', h.signalnoise, '', 'Estimated band noise'),
+      tile('Solar flux (SFI)', h.sfi ?? w.f107, '', '10.7 cm radio flux', '', 'sfi'),
+      tile('Sunspot number', h.ssn, '', 'Daily SSN', '', 'ssn'),
+      tile('A-index', h.a, '', h.geomagfield ? `Field ${h.geomagfield.toLowerCase()}` : 'Daily geomagnetic', '', 'aindex'),
+      tile('K-index', kp == null ? null : (Math.round(kp * 100) / 100).toString(), '', ks.label, ' ' + pill(ks.cls, ks.cls === 'good' ? 'OK' : ks.cls === 'fair' ? 'Active' : 'Storm'), 'kindex'),
+      tile('X-ray flux', x.current || h.xray, '', x.max6h ? `6 h peak ${x.max6h}` : 'GOES 0.1–0.8 nm', '', 'xray'),
+      tile('Solar wind', w.speed ?? h.solarwind, 'km/s', w.bt != null ? `Bt ${w.bt} nT` : 'Proton speed', '', 'solarwind'),
+      tile('Bz (IMF)', bz, 'nT', bz == null ? '' : bz < 0 ? 'Southward: storms more likely' : 'Northward: quieter', '', 'bz'),
+      tile('Noise floor', h.signalnoise, '', 'Estimated band noise', '', 'noise'),
     ].join('');
     $('#solarUpdated').textContent = h.updated ? `HamQSL updated ${h.updated}` : '';
   }
@@ -191,7 +196,7 @@
       const v = sc.current[k] || {};
       const n = v.scale ?? 0;
       return `<div class="scale" style="--c:${scaleColor(n)}">
-        <div class="letter">${names[k]}</div>
+        <div class="letter">${term('rsg', names[k])}</div>
         <div class="big">${k}${n}</div>
         <div class="desc">${esc(v.text && v.text !== 'none' ? v.text : 'None')}</div></div>`;
     }).join('');
@@ -223,9 +228,9 @@
 
     const act = state.activity;
     const head = `<thead><tr><th>Band</th><th class="freq">MHz</th>
-      <th>At your QTH now<small>${iono ? `MUF ${iono.mufd.toFixed(1)} MHz` : pos ? 'no nearby ionosonde' : 'set grid'}</small></th>
-      <th class="num">Heard nearby<small>last ${act?.windowMin ?? 15} min</small></th>
-      <th class="${isDay ? 'now' : 'hide-sm'}">HamQSL day${isDay ? '<small>now</small>' : '<small>&nbsp;</small>'}</th>
+      <th>At your QTH now<small>${iono ? `${term('muf', 'MUF')} ${iono.mufd.toFixed(1)} MHz` : pos ? 'no nearby ionosonde' : 'set grid'}</small></th>
+      <th class="num">${term('psk', 'Heard nearby')}<small>last ${act?.windowMin ?? 15} min</small></th>
+      <th class="${isDay ? 'now' : 'hide-sm'}">${term('hamqsl', 'HamQSL day')}${isDay ? '<small>now</small>' : '<small>&nbsp;</small>'}</th>
       <th class="${!isDay ? 'now' : 'hide-sm'}">HamQSL night${!isDay ? '<small>now</small>' : '<small>&nbsp;</small>'}</th></tr></thead>`;
     const body = HF_BANDS.map(([name, mhz, group]) => {
       const g = groups[group];
@@ -311,7 +316,7 @@
     if (b.stations) {
       lines.push(`${b.stations} station${b.stations === 1 ? '' : 's'} past ${fmtDist(b.minKm)}${b.toward ? ` · toward ${esc(b.toward)}` : ''}`);
       if (b.farthest) lines.push(`Farthest <span class="mono">${esc(b.farthest.call)}</span> (${esc(b.farthest.grid.slice(0, 4))}), ${fmtDist(b.farthest.km)}`);
-      if (b.likely) lines.push(`Likely ${esc(b.likely)}`);
+      if (b.likely) lines.push(`Likely ${term(/^Tropo/.test(b.likely) ? 'tropo' : 'es', b.likely)}`);
     } else if (b.status === 'closed') {
       lines.push(`${b.monitors} monitor${b.monitors === 1 ? '' : 's'} nearby, only local paths`);
     } else {
@@ -475,9 +480,9 @@
     return ctx;
   }
 
-  const legendKey = (swatch, label) => `<span><span class="sw" style="${swatch}"></span>${esc(label)}</span>`;
+  const legendKey = (swatch, label, termKey = null) => `<span><span class="sw" style="${swatch}"></span>${termKey ? term(termKey, label) : esc(label)}</span>`;
   const nightLegend = () => legendKey(`background:rgb(${css('--night').split(',').join(' ')} / .6)`, 'Night') +
-    legendKey('background:rgb(214 160 60 / .55)', 'Gray line (civil twilight)') +
+    legendKey('background:rgb(214 160 60 / .55)', 'Gray line (civil twilight)', 'grayline') +
     legendKey('background:#fab219;border-radius:50%', 'Sun overhead');
 
   // Base layers. OpenStreetMap tiles (with a CSS filter for "Dark") and USGS
@@ -1296,7 +1301,7 @@
       (d.total > d.repeaters.length ? ` (closest ${d.repeaters.length} loaded)` : '');
     $('#rptSource').textContent = `Directory downloaded from HearHam ${ago(d.fetched)}.`;
 
-    $('#rptTable').innerHTML = rows.length ? `<thead><tr><th class="num">Output</th><th>Offset</th><th>Tone</th><th>Mode</th><th>Repeater</th><th class="num hide-sm">Distance</th><th class="hide-sm">Status</th><th class="hide-sm">Details</th></tr></thead><tbody>${
+    $('#rptTable').innerHTML = rows.length ? `<thead><tr><th class="num">Output</th><th>${term('offset', 'Offset')}</th><th>${term('tone', 'Tone')}</th><th>Mode</th><th>Repeater</th><th class="num hide-sm">Distance</th><th class="hide-sm">Status</th><th class="hide-sm">Details</th></tr></thead><tbody>${
       rows.map(r => {
         const status = !r.operational ? pill('closed', 'Off air')
           : r.restriction ? pill('fair', r.restriction.toLowerCase().includes('closed') ? 'Closed access' : r.restriction)
@@ -1773,12 +1778,12 @@
     };
     box.innerHTML = `
       <div class="sun-times">
-        ${tile('Rise (AOS)', clockHM(new Date(p.aos)), '', `${utcHM(new Date(p.aos))} UTC · ${Math.round(p.aosAz)}° ${compass(p.aosAz)}`)}
+        ${tile('Rise (AOS)', clockHM(new Date(p.aos)), '', `${utcHM(new Date(p.aos))} UTC · ${Math.round(p.aosAz)}° ${compass(p.aosAz)}`, '', 'aos')}
         ${tile('Highest (TCA)', `${Math.round(p.maxEl)}°`, '', `${clockHM(new Date(p.tca))}`)}
         ${tile('Set (LOS)', clockHM(new Date(p.los)), '', `${utcHM(new Date(p.los))} UTC · ${Math.round(p.losAz)}° ${compass(p.losAz)}`)}
       </div>
       <table class="mini-table doppler">
-        <thead><tr><th>Doppler</th><th>AOS</th><th>TCA</th><th>LOS</th></tr></thead>
+        <thead><tr><th>${term('doppler', 'Doppler')}</th><th>AOS</th><th>TCA</th><th>LOS</th></tr></thead>
         <tbody>${freqRow('Downlink (listen)', s.downlink, false)}${freqRow('Uplink (transmit)', s.uplink, true)}</tbody>
       </table>
       <p class="note">${esc(s.mode)}${s.notes ? ` · ${esc(s.notes)}` : ''}. ${Array.isArray(s.downlink) ? 'Linear passbands show the shift at the centre of the passband.' : 'Frequencies are corrected for Doppler shift; most radios tune in 5 kHz steps.'}</p>`;
@@ -2114,7 +2119,7 @@
       <div class="sun-times prop-tiles">
         ${tile('Distance', fmtDist(s.km), '', `${s.hops} hop${s.hops === 1 ? '' : 's'} · ${s.elevation > 1 ? `${Math.round(s.elevation)}° takeoff` : 'low takeoff'}`)}
         ${tile('Beam heading', `${Math.round(s.bearing)}°`, '', `${compass(s.bearing)} · long path ${Math.round(l.bearing)}°`)}
-        ${tile('Path MUF', s.now.muf.toFixed(1), 'MHz', `Work near ${s.now.fot.toFixed(1)} MHz`)}
+        ${tile('Path MUF', s.now.muf.toFixed(1), 'MHz', `Work near ${s.now.fot.toFixed(1)} MHz`, '', 'muf')}
         ${tile('Best now', s.summary.best ? s.summary.best.band : 'None', '', s.summary.best ? RATING_LABEL[s.summary.best.rating] : 'No band rated fair or better')}
       </div>
       ${t.approximate ? `<p class="note">Location from the callsign prefix (${esc(t.place)}), so it’s approximate.</p>` : ''}`;
@@ -2232,7 +2237,7 @@
       legendKey(`background:${css('--series-2')};border-radius:50%`, 'Target') +
       legendKey(`height:0;border-top:2px solid ${css('--series-1')};border-radius:0`, 'Short path') +
       legendKey(`height:0;border-top:2px dashed ${css('--series-1')};border-radius:0;opacity:.6`, 'Long path') +
-      legendKey(`background:${css('--series-3')};transform:rotate(45deg);border-radius:1px`, 'Control point');
+      legendKey(`background:${css('--series-3')};transform:rotate(45deg);border-radius:1px`, 'Control point', 'controlpoint');
   }
 
   function bindProp() {
@@ -2510,6 +2515,161 @@
     });
   }
 
+  // ------------------------------------------------------------ glossary
+
+  // A jargon word as a button that explains itself when tapped.
+  function term(key, label) {
+    const g = window.HamReference.GLOSSARY[key];
+    if (!g) return esc(label);
+    return `<button type="button" class="term" data-term="${key}" aria-haspopup="dialog" aria-expanded="false">${esc(label ?? g[0])}</button>`;
+  }
+
+  const termPop = Object.assign(document.createElement('div'), { id: 'termPop', className: 'term-pop', hidden: true });
+  termPop.setAttribute('role', 'dialog');
+  let termOpenFor = null;
+
+  function closeTerm() {
+    if (termPop.hidden) return;
+    termPop.hidden = true;
+    termOpenFor?.setAttribute('aria-expanded', 'false');
+    termOpenFor = null;
+  }
+
+  function openTerm(btn) {
+    const key = btn.dataset.term;
+    const [title, text] = window.HamReference.GLOSSARY[key] || [];
+    if (!title) return;
+    if (termOpenFor === btn) { closeTerm(); return; }
+    closeTerm();
+    termPop.innerHTML = `<div class="term-head"><b id="termTitle">${esc(title)}</b><button type="button" class="term-close" aria-label="Close">×</button></div>
+      <p>${esc(text)}</p><button type="button" class="link-btn" data-glossary="${key}">All terms in the glossary</button>`;
+    termPop.setAttribute('aria-labelledby', 'termTitle');
+    termPop.hidden = false;
+    // Below the term if it fits, else above; kept inside the window.
+    const r = btn.getBoundingClientRect(), p = termPop.getBoundingClientRect();
+    const left = Math.min(Math.max(8, r.left), innerWidth - p.width - 8);
+    const top = r.bottom + 6 + p.height < innerHeight ? r.bottom + 6 : Math.max(8, r.top - p.height - 6);
+    termPop.style.left = `${left + scrollX}px`;
+    termPop.style.top = `${top + scrollY}px`;
+    btn.setAttribute('aria-expanded', 'true');
+    termOpenFor = btn;
+  }
+
+  function renderGlossary() {
+    const entries = Object.entries(window.HamReference.GLOSSARY).sort((a, b) => a[1][0].localeCompare(b[1][0]));
+    $('#refGlossaryList').innerHTML = entries.map(([key, [title, text]]) => `<div class="gl-item" id="gl-${key}"><dt>${esc(title)}</dt><dd>${esc(text)}</dd></div>`).join('');
+  }
+
+  function bindGlossary() {
+    document.body.append(termPop);
+    document.addEventListener('click', e => {
+      const t = e.target.closest('.term[data-term]');
+      if (t) { e.preventDefault(); e.stopPropagation(); openTerm(t); return; }
+      if (e.target.closest('.term-close')) { closeTerm(); return; }
+      const g = e.target.closest('[data-glossary]');
+      if (g) {
+        closeTerm();
+        showView('ref');
+        const item = document.getElementById(`gl-${g.dataset.glossary}`);
+        const card = item?.closest('.card.collapsed');
+        if (card) setCollapsed(card, false);
+        item?.scrollIntoView({ block: 'center' });
+        item?.classList.add('flash');
+        setTimeout(() => item?.classList.remove('flash'), 1600);
+        return;
+      }
+      if (!termPop.contains(e.target)) closeTerm();
+    }, true);
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && !termPop.hidden) { const b = termOpenFor; closeTerm(); b?.focus(); } });
+    window.addEventListener('resize', closeTerm);
+  }
+
+  // ------------------------------------------------------------ what's new and tips
+
+  // Highlights per version, shown once after an update so new features get found.
+  const WHATS_NEW = [
+    ['1.4.0', [
+      'Collapse any card with the ▾ button at its top right; the dashboard remembers.',
+      'Tap a dotted word (MUF, Kp, foF2…) for a plain-language explanation; the full glossary is on the Reference tab.',
+      'Settings now show what this browser uses next to the app’s configuration.',
+    ]],
+    ['1.3.0', ['WWV and WWVH time signals on the Propagation tab: which frequencies are open toward Colorado and Hawaii.']],
+    ['1.2.0', ['Restarts keep recent PSKReporter data, and the Propagation tab shows how often the model matched real paths.']],
+    ['1.1.0', ['NCDXF beacons on the Propagation tab, a Reference tab with the band plan and GMRS/FRS/CB charts, and a UTC time option.']],
+  ];
+  const versionNum = v => String(v || '').split('.').map(n => parseInt(n, 10) || 0).reduce((a, n) => a * 1000 + n, 0);
+
+  function showWhatsNew() {
+    const current = state.defaults.version;
+    if (!/^\d+\.\d+\.\d+$/.test(current || '')) return;
+    const seen = storeGet('hamdash.seenVersion');
+    // New users get the tour instead.
+    if (!seen || !storeGet('hamdash.tourDone')) { storeSet('hamdash.seenVersion', current); return; }
+    const items = WHATS_NEW.filter(([v]) => versionNum(v) > versionNum(seen) && versionNum(v) <= versionNum(current)).slice(0, 3);
+    if (!items.length) { storeSet('hamdash.seenVersion', current); return; }
+    $('#whatsNewTitle').textContent = `Updated to ${current}. What’s new:`;
+    $('#whatsNewList').innerHTML = items.flatMap(([, list]) => list).map(t => `<li>${esc(t)}</li>`).join('');
+    $('#whatsNew').hidden = false;
+    $('#whatsNewClose').onclick = () => { $('#whatsNew').hidden = true; storeSet('hamdash.seenVersion', current); };
+  }
+
+  // A small tip shown once per browser, above el, until dismissed.
+  function oneTimeTip(key, el, text) {
+    if (!el || storeGet(`hamdash.tip.${key}`) || !storeGet('hamdash.tourDone')) return;
+    const tipEl = document.createElement('div');
+    tipEl.className = 'tip';
+    tipEl.setAttribute('role', 'note');
+    tipEl.innerHTML = `<span>💡 ${esc(text)}</span><button type="button" class="link-btn">Got it</button>`;
+    tipEl.querySelector('button').addEventListener('click', () => { storeSet(`hamdash.tip.${key}`, '1'); tipEl.remove(); });
+    el.before(tipEl);
+  }
+
+  function showTips() {
+    oneTimeTip('spots', $('#spotsTable')?.closest('.table-wrap'), 'Tap any callsign to look it up, or the ↗ next to it to see how the path to that station is doing.');
+    oneTimeTip('propmap', $('#propMap')?.closest('.map-wrap'), 'Click anywhere on this map to analyze the path to that point.');
+  }
+
+  // ------------------------------------------------------------ collapsible cards
+
+  // Every titled card gets a collapse button. What's collapsed is remembered
+  // per browser, keyed by the card's heading ID.
+  const collapsed = new Set((() => { try { return JSON.parse(storeGet('hamdash.collapsed')) || []; } catch { return []; } })());
+
+  function setCollapsed(card, on) {
+    const key = card.getAttribute('aria-labelledby');
+    card.classList.toggle('collapsed', on);
+    const b = card.querySelector(':scope > .card-head > .collapse-btn');
+    const title = document.getElementById(key)?.textContent.trim() || 'card';
+    b?.setAttribute('aria-expanded', String(!on));
+    b?.setAttribute('aria-label', `${on ? 'Expand' : 'Collapse'} ${title}`);
+    if (b) b.title = on ? 'Expand' : 'Collapse';
+    if (on) collapsed.add(key); else collapsed.delete(key);
+    storeSet('hamdash.collapsed', collapsed.size ? JSON.stringify([...collapsed]) : null);
+  }
+
+  function setupCollapsibleCards() {
+    for (const card of document.querySelectorAll('.card[aria-labelledby]')) {
+      const head = card.querySelector(':scope > .card-head');
+      if (!head) continue;
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'collapse-btn';
+      b.innerHTML = '<span aria-hidden="true">▾</span>';
+      head.append(b);
+      b.addEventListener('click', () => {
+        setCollapsed(card, !card.classList.contains('collapsed'));
+        // Maps and charts can only size themselves while visible.
+        if (!card.classList.contains('collapsed')) redrawVisible();
+      });
+      setCollapsed(card, collapsed.has(card.getAttribute('aria-labelledby')));
+    }
+  }
+
+  function expandAllCards() {
+    for (const card of document.querySelectorAll('.card.collapsed')) setCollapsed(card, false);
+    redrawVisible();
+  }
+
   const TAB_NAMES = [['weather', 'Space weather'], ['prop', 'Propagation'], ['repeaters', 'Repeaters'], ['aprs', 'APRS'], ['pota', 'POTA'], ['sats', 'Satellites'], ['lookup', 'Callsign lookup'], ['ref', 'Reference']];
 
   // Per-browser: hide tabs someone doesn't use (Space weather always stays).
@@ -2765,7 +2925,7 @@
   // [view, element to highlight, title, text]. Steps on hidden tabs are skipped.
   const TOUR_STEPS = [
     ['weather', '#viewTabs', 'Eight views', 'Space weather, propagation paths, repeaters, APRS, POTA, satellite passes, callsign lookup and a reference tab. Hide the ones you don’t use in settings (⚙ at the top right).'],
-    ['weather', '#tiles', 'Conditions right now', 'Solar flux, sunspots, the K-index and more. Higher solar flux generally means better high-band (20–10 m) conditions; a high K-index means a disturbed, noisy ionosphere.'],
+    ['weather', '#tiles', 'Conditions right now', 'Solar flux, sunspots, the K-index and more. Tap any dotted word for a plain-language explanation, and use the ▾ at a card’s top right to collapse cards you don’t need.'],
     ['weather', '#bandsTable', 'Which bands are open', '“At your QTH” is an estimate from the nearest ionosonde. “Heard nearby” is measured: stations actually decoded near you in the last 15 minutes.'],
     ['weather', '#stormStatus', 'Storm safety', 'Safe, Caution or Danger for your station, from National Weather Service alerts and an optional lightning sensor. Danger also shows a red banner on every tab.'],
     ['weather', '#panel-grayline', 'Maps', 'Click a map, then scroll to zoom, or pinch on a phone. The layers button switches between Dark, Streets, Satellite and Topo. The golden band is the gray line, where low-band DX is often best.'],
@@ -2798,6 +2958,9 @@
     const [view, selector, title, text] = tour.steps[tour.i];
     if (view && view !== currentView) showView(view);
     if (view === 'weather' && selector === '#panel-grayline') document.querySelector('#mapTabs [data-map="grayline"]')?.click();
+    // A step can't point at something inside a collapsed card.
+    const holder = document.querySelector(selector)?.closest('.card.collapsed');
+    if (holder) { setCollapsed(holder, false); redrawVisible(); }
     const pop = $('#tourPop');
     const last = tour.i === tour.steps.length - 1;
     pop.innerHTML = `
@@ -2883,12 +3046,33 @@
 
   // ------------------------------------------------------------ settings dialog
 
+  // Which of this browser's settings differ from the app's configuration.
+  function overrides() {
+    const s = state.settings, d = state.defaults;
+    const out = [];
+    if (s.callsign && s.callsign.toUpperCase() !== String(d.callsign || '').toUpperCase()) out.push('callsign');
+    if (s.grid && s.grid.toUpperCase() !== String(d.grid || '').toUpperCase()) out.push('grid');
+    return out;
+  }
+
+  function renderCompare() {
+    const s = state.settings, d = state.defaults, st = station();
+    const unitName = u => (u === 'km' ? 'Kilometers' : 'Miles');
+    const row = (label, mine, app) => `<tr${mine !== app ? ' class="differs"' : ''}><th scope="row">${label}</th><td class="mono">${esc(mine || '—')}</td><td class="mono">${esc(app || '—')}</td></tr>`;
+    $('#setCompare').innerHTML = `<table class="mini-table compare">
+        <thead><tr><th></th><th>This browser</th><th>App configuration</th></tr></thead>
+        <tbody>${row('Callsign', st.callsign, String(d.callsign || '').toUpperCase())}${row('Grid', st.grid, d.grid)}${row('Units', unitName(st.units), unitName(d.distance_units))}</tbody>
+      </table>
+      <p class="note">Home Assistant sensors, alerts, saved paths and the model check always use the <b>app configuration</b>. To change it, use <b>Run setup again</b> below, or the app’s Configuration tab in Home Assistant.${overrides().length ? ' This browser is overriding it, marked with a dot by your callsign at the top.' : ''}</p>`;
+  }
+
   function openSettings() {
+    renderCompare();
     const s = state.settings, d = state.defaults;
     $('#setCall').value = s.callsign || '';
-    $('#setCall').placeholder = d.callsign ? `Add-on default: ${d.callsign}` : 'e.g. KR4FCD';
+    $('#setCall').placeholder = d.callsign ? `App setting: ${d.callsign}` : 'e.g. KR4FCD';
     $('#setGrid').value = s.grid || '';
-    $('#setGrid').placeholder = d.grid ? `Add-on default: ${d.grid}` : 'e.g. DM14xd';
+    $('#setGrid').placeholder = d.grid ? `App setting: ${d.grid}` : 'e.g. DM14xd';
     $('#setUnits').value = s.units || '';
     $('#setTime').value = s.time || '';
     const hidden = new Set(s.hiddenTabs || []);
@@ -3136,6 +3320,10 @@
     bindSettings();
     bindProp();
     bindRef();
+    bindGlossary();
+    renderGlossary();
+    setupCollapsibleCards();
+    $('#expandAll').addEventListener('click', () => { expandAllCards(); $('#settings').close(); });
     bindSetup();
     bindTour();
     bindMapTabs();
@@ -3252,6 +3440,7 @@
         callsign: cfg.callsign || '', grid: cfg.grid || '', distance_units: cfg.distance_units || 'mi',
         qrz: Boolean(cfg.qrz), spot_watch: cfg.spot_watch || [],
         station_type: cfg.station_type || 'amateur', setup: cfg.setup || {}, features: cfg.features || {},
+        version: cfg.version || '',
       };
     } catch (e) { console.warn(e); }
     renderHeader();
@@ -3261,6 +3450,8 @@
     applyTabVisibility();
     showView(location.hash.slice(1) || storeGet('hamdash.view') || 'weather');
     startOnboarding();
+    showWhatsNew();
+    showTips();
 
     loadSolar(); loadIono(); loadSpots(); loadPsk(); loadCycle(); loadActivity(); loadStorm(); loadSavedPaths();
     setInterval(loadSolar, 5 * 60000);

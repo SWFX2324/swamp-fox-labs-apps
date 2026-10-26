@@ -77,3 +77,20 @@ test('minutes until the next space weather report', () => {
   assert.equal(R.minutesToAlert(wwv, Date.parse('2026-10-26T17:19:00Z')), 59);
   assert.equal(R.minutesToAlert(wwvh, Date.parse('2026-10-26T17:50:00Z')), 55);
 });
+
+test('every glossary term the dashboard links to exists', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const src = ['app.js', 'index.html'].map(f => fs.readFileSync(path.join(__dirname, '../app/static', f), 'utf8')).join('\n');
+  // term('key', ...), data-term="key", and the term key passed last to tile(...) or legendKey(...).
+  const keys = new Set([
+    ...[...src.matchAll(/term\('([a-z0-9]+)'/g)].map(m => m[1]),
+    ...[...src.matchAll(/data-term="([a-z0-9]+)"/g)].map(m => m[1]),
+    ...[...src.matchAll(/(?:tile|legendKey)\([^\n]*, '([a-z0-9]+)'\)/g)].map(m => m[1]),
+  ]);
+  assert.ok(keys.size >= 20, `found ${keys.size} linked terms`);
+  for (const k of keys) assert.ok(R.GLOSSARY[k], `glossary has "${k}"`);
+  for (const [k, [title, text]] of Object.entries(R.GLOSSARY)) {
+    assert.ok(title && text.length > 40, `"${k}" has a title and a real explanation`);
+  }
+});

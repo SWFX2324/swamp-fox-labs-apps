@@ -28,6 +28,7 @@
       <span class="mono" id="hdrCall">NOCALL</span>
       <span class="sep">·</span>
       <span class="mono" id="hdrGrid">----</span>
+      <span class="override-dot" id="hdrOverride" hidden></span>
       <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7m7.43-2.53c.04-.32.07-.64.07-.97s-.03-.66-.07-1l2.11-1.63c.19-.15.24-.42.12-.64l-2-3.46a.5.5 0 0 0-.61-.22l-2.49 1a7.3 7.3 0 0 0-1.69-.98l-.38-2.65A.49.49 0 0 0 14 2h-4a.49.49 0 0 0-.49.42l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1a.5.5 0 0 0-.61.22l-2 3.46a.5.5 0 0 0 .12.64L4.57 11c-.04.34-.07.67-.07 1s.03.65.07.97l-2.11 1.66a.5.5 0 0 0-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1.01c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.43.49.43h4c.25 0 .46-.19.49-.43l.38-2.65c.61-.25 1.17-.58 1.69-.98l2.49 1.01c.22.08.49 0 .61-.22l2-3.46a.5.5 0 0 0-.12-.64z"/></svg>
     </button>
     <div class="clocks">
@@ -35,6 +36,15 @@
       <div><span class="clock-label">Local</span><span class="mono clock" id="clockLocal">--:--:--</span></div>
     </div>
   </header>
+
+  <aside class="whats-new" id="whatsNew" hidden aria-labelledby="whatsNewTitle">
+    <div class="wn-body">
+      <b id="whatsNewTitle"></b>
+      <ul id="whatsNewList"></ul>
+      <a href="https://github.com/SWFX2324/swamp-fox-labs-apps/blob/main/ham_dashboard/CHANGELOG.md" target="_blank" rel="noopener">Full changelog</a>
+    </div>
+    <button type="button" class="term-close" id="whatsNewClose" aria-label="Dismiss what’s new">×</button>
+  </aside>
   <div class="storm-banner" id="stormBanner" role="alert" hidden></div>
 
   <main class="grid view" id="view-weather">
@@ -127,11 +137,11 @@
       </div>
       <div class="map-panel" id="panel-mufd" hidden>
         <div class="map-wrap img"><img alt="Maximum usable frequency map from KC2G" data-src="api/map/mufd.svg"></div>
-        <p class="note">Maximum usable frequency for a 3000 km hop, modelled from live ionosonde data. Source: <a href="https://prop.kc2g.com/" target="_blank" rel="noopener">KC2G</a>.</p>
+        <p class="note"><button type="button" class="term" data-term="muf" aria-haspopup="dialog" aria-expanded="false">Maximum usable frequency</button> for a 3000 km hop, modelled from live ionosonde data. Source: <a href="https://prop.kc2g.com/" target="_blank" rel="noopener">KC2G</a>.</p>
       </div>
       <div class="map-panel" id="panel-fof2" hidden>
         <div class="map-wrap img"><img alt="Critical frequency foF2 map from KC2G" data-src="api/map/fof2.svg"></div>
-        <p class="note">Critical frequency (foF2): the highest frequency reflected straight up. Good NVIS frequencies sit just below it. Source: <a href="https://prop.kc2g.com/" target="_blank" rel="noopener">KC2G</a>.</p>
+        <p class="note">Critical frequency (<button type="button" class="term" data-term="fof2" aria-haspopup="dialog" aria-expanded="false">foF2</button>): the highest frequency reflected straight up. Good NVIS frequencies sit just below it. Source: <a href="https://prop.kc2g.com/" target="_blank" rel="noopener">KC2G</a>.</p>
       </div>
     </section>
 
@@ -273,7 +283,7 @@
       </div>
       <div class="beacon-now" id="beaconNow"></div>
       <div class="table-wrap"><table class="data beacon-table" id="beaconTable"></table></div>
-      <p class="note" id="beaconNote">Eighteen beacons take turns on these five frequencies. Each sends its callsign in CW, then four dashes at 100 W, 10 W, 1 W and 0.1 W; hearing the weaker dashes means a better path. Every beacon comes around on every band each 3 minutes, so you can check a band in seconds. Ratings are the propagation estimate for your path to each beacon right now. Some beacons are off the air at times; see <a href="https://www.ncdxf.org/beacon/" target="_blank" rel="noopener">NCDXF</a> for status.</p>
+      <p class="note" id="beaconNote">Eighteen <button type="button" class="term" data-term="ncdxf" aria-haspopup="dialog" aria-expanded="false">NCDXF beacons</button> take turns on these five frequencies. Each sends its callsign in CW, then four dashes at 100 W, 10 W, 1 W and 0.1 W; hearing the weaker dashes means a better path. Every beacon comes around on every band each 3 minutes, so you can check a band in seconds. Ratings are the propagation estimate for your path to each beacon right now. Some beacons are off the air at times; see <a href="https://www.ncdxf.org/beacon/" target="_blank" rel="noopener">NCDXF</a> for status.</p>
     </section>
 
     <section class="card span-12" aria-labelledby="h-time" id="timeCard">
@@ -465,6 +475,14 @@
       <div class="table-wrap"><table class="data ref-table ref-cb" id="refCbTable"></table></div>
       <p class="note">CB channel 9 is for emergencies and 19 is the common highway channel. From FCC Part 95.</p>
     </section>
+
+    <section class="card span-12" aria-labelledby="h-glossary" id="refGlossary">
+      <div class="card-head">
+        <h2 id="h-glossary">Glossary</h2>
+        <span class="meta">Tap any dotted word on the dashboard for its explanation</span>
+      </div>
+      <dl class="glossary" id="refGlossaryList"></dl>
+    </section>
   </main>
 
   <main class="grid view" id="view-lookup" hidden>
@@ -534,6 +552,7 @@
     <form method="dialog" id="settingsForm">
       <h2 id="settingsTitle">Settings</h2>
       <p class="note">Saved in this browser only, so each person can use their own. Leave a field blank to use the app’s configuration.</p>
+      <div class="config-compare" id="setCompare"></div>
 
       <section class="set-section" aria-labelledby="setStationHead">
         <h3 id="setStationHead">Station</h3>
@@ -562,6 +581,9 @@
           <legend>Show these tabs</legend>
           <div id="setTabs"></div>
         </fieldset>
+        <div class="dialog-links">
+          <button type="button" class="link-btn" id="expandAll">Expand all collapsed cards</button>
+        </div>
       </section>
 
       <section class="set-section" aria-labelledby="setHelpHead">
@@ -583,7 +605,7 @@
       </details>
       <p class="error" id="settingsError" hidden></p>
       <div class="dialog-actions">
-        <button type="button" class="secondary" id="resetSettings">Use add-on defaults</button>
+        <button type="button" class="secondary" id="resetSettings" title="Clear this browser’s callsign, grid and units so it uses the app configuration">Use app configuration</button>
         <span class="spacer"></span>
         <button type="button" class="secondary" id="cancelSettings">Cancel</button>
         <button type="submit" value="save" id="saveSettings">Save</button>

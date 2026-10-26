@@ -142,7 +142,50 @@
     return Math.ceil((station.alertMinute - now + 60) % 60);
   }
 
+  // Plain-language explanations for the jargon on the dashboard, shown when a
+  // dotted term is tapped and listed on the Reference tab.
+  const GLOSSARY = {
+    sfi: ['Solar flux (SFI)', 'Radio noise from the sun at 10.7 cm, a stand-in for how much ionizing ultraviolet reaches the ionosphere. Higher means the upper HF bands (20–10 m) open more often and longer. Below about 80 is poor, above about 150 is excellent.'],
+    ssn: ['Sunspot number (SSN)', 'A daily count of sunspots and sunspot groups. It rises and falls over the roughly 11-year solar cycle and tracks the solar flux: more sunspots, better high-band conditions.'],
+    aindex: ['A-index', 'A daily measure of how disturbed Earth’s magnetic field has been, from 0 (quiet) upward. Below about 10 is quiet and good for HF; above 30 means a storm that degrades propagation, especially on paths near the poles.'],
+    kindex: ['K-index (Kp)', 'How disturbed Earth’s magnetic field is right now, on a 0–9 scale updated every 3 hours. 0–2 is quiet, 4 is unsettled, 5 or more is a geomagnetic storm: noisy bands, absorbed polar paths, and sometimes aurora.'],
+    xray: ['X-ray flux', 'X-rays from solar flares, graded A, B, C, M and X (each 10 times the last). M and X flares can black out HF on the sunlit side of Earth for minutes to hours, starting with the low bands.'],
+    solarwind: ['Solar wind', 'The stream of charged particles from the sun, in km/s. Faster than about 500 km/s, especially with a southward Bz, tends to stir up geomagnetic storms.'],
+    bz: ['Bz (IMF)', 'The north–south direction of the sun’s magnetic field arriving at Earth. Negative (southward) Bz couples into Earth’s field and drives storms and aurora; positive (northward) Bz keeps things calmer.'],
+    noise: ['Noise floor', 'HamQSL’s estimate of the background noise level in S-units. Higher noise (S3 and up) hides weak signals even when a band is open.'],
+    rsg: ['NOAA R, S and G scales', 'NOAA’s 0–5 ratings for space weather. R is radio blackouts from flares (HF on the day side), S is solar radiation storms (polar HF absorption), and G is geomagnetic storms (noisy, unstable bands). 0 is none, 5 is extreme.'],
+    muf: ['MUF', 'Maximum usable frequency: the highest frequency the ionosphere will bounce over a given path right now. Bands below the MUF can get through; bands above it go into space. It rises with the sun and falls at night.'],
+    fot: ['Best working frequency', 'About 85% of the MUF (sometimes called the FOT). Bands near this frequency are usually the most reliable on a path.'],
+    fof2: ['foF2', 'The highest frequency the ionosphere reflects straight up. It sets the MUF for every path and the best frequencies for short-range NVIS contacts (just below foF2).'],
+    m3000: ['M(3000)', 'How much higher the MUF is for a 3000 km path than straight up (foF2), typically about 3. The dashboard uses measured values to estimate path MUFs.'],
+    ionosonde: ['Ionosonde', 'A station that sounds the ionosphere straight up with a sweeping signal to measure foF2 and the MUF. The dashboard anchors its estimates to the live readings of the nearest ones.'],
+    grayline: ['Gray line', 'The band of twilight around Earth between day and night. Low-band (160–40 m) signals travel unusually far along it, because the absorbing D layer has faded but the reflecting F layer hasn’t.'],
+    absorption: ['D-layer absorption', 'In daylight the lowest layer of the ionosphere soaks up low-frequency signals. That’s why 160, 80 and often 40 m are short-range by day and open for long distance at night.'],
+    hop: ['Hop', 'One bounce off the ionosphere, up to about 4000 km. Longer paths take several hops; each one loses some signal.'],
+    takeoff: ['Takeoff angle', 'The angle above the horizon a signal leaves at for a path. Long DX needs low angles (a few degrees), so low-angle antennas work better for it.'],
+    controlpoint: ['Control point', 'Where a path’s MUF is decided: the point in the ionosphere where the signal reflects. On long paths these are about 2000 km from each end, so the ionosphere near each station matters most.'],
+    shortlong: ['Short path and long path', 'The short path is the direct great-circle route. The long path goes the other way round the world (40,000 km minus the short path). Long path sometimes works better, for example when it runs along the gray line.'],
+    es: ['Sporadic-E', 'Patches of dense ionization in the E layer that appear without warning, mostly in summer. They open 10, 6 and sometimes 2 m for paths of about 800–2300 km, often for minutes to hours.'],
+    tropo: ['Tropo ducting', 'Weather layers (temperature inversions) that bend VHF and UHF signals well beyond the horizon, sometimes for hundreds of kilometres. Common near coasts and with stable high pressure.'],
+    meteorscatter: ['Meteor scatter', 'Signals reflected off the ionized trails of meteors, usually for less than a second. With the MSK144 mode it works on 6 and 2 m any day, so the dashboard leaves it out when deciding if a band is “open”.'],
+    aurora: ['Aurora', 'During strong geomagnetic storms the aurora can reflect VHF signals, giving a raspy, distorted sound. It also absorbs HF on paths that cross the polar regions.'],
+    ft8: ['FT8', 'A digital mode that decodes very weak signals in 15-second cycles. Because so many stations run it and report what they hear, it’s the best live picture of which bands are open.'],
+    psk: ['PSKReporter', 'A free service that collects automatic reception reports from thousands of receiving stations, mostly decoding FT8. “Heard nearby” and the VHF openings are measured from it.'],
+    hamqsl: ['HamQSL ratings', 'N0NBH’s worldwide day and night ratings for pairs of HF bands, based on solar flux and geomagnetic conditions. They’re a general guide, not specific to your location.'],
+    dx: ['DX', 'Long-distance contacts, usually with other countries. A “DX spot” is a report that a station is on the air on a frequency.'],
+    qth: ['QTH', 'Your station’s location. The dashboard uses your grid square for it.'],
+    grid: ['Grid square', 'The Maidenhead locator system hams use to give a location compactly, like DM14xd. 4 characters is about 100 by 200 km; 6 characters is a few kilometres.'],
+    ncdxf: ['NCDXF beacons', 'Eighteen beacons run by the Northern California DX Foundation and the IARU. They take turns on 14.100, 18.110, 21.150, 24.930 and 28.200 MHz, so a quick listen tells you which directions a band is open toward.'],
+    aos: ['AOS, TCA and LOS', 'Satellite pass times: acquisition of signal (rises above the horizon), time of closest approach (highest point), and loss of signal (sets).'],
+    doppler: ['Doppler shift', 'A satellite’s speed shifts its frequencies up as it approaches and down as it leaves, by up to several kHz on 70 cm. Tune to follow it during a pass.'],
+    offset: ['Repeater offset', 'Repeaters listen on one frequency and transmit on another. The offset is the difference (for example −600 kHz on 2 m), so you transmit on the input and listen on the output.'],
+    tone: ['Tone (CTCSS)', 'A low tone sent under your voice that many repeaters require before they’ll relay you. It’s set on your radio, for example 100.0 Hz.'],
+    igate: ['iGate and digipeater', 'APRS relays. A digipeater repeats packets over the air to extend range; an iGate passes packets heard over the air to the internet (APRS-IS), which is where the dashboard gets them.'],
+    pota: ['POTA', 'Parks on the Air: hams operating portable from parks (activators) and others contacting them (hunters). Spots show who’s on the air from which park.'],
+  };
+
   root.HamReference = {
+    GLOSSARY,
     US_BAND_PLAN, LICENSE_CLASSES, MODE_LABEL, GMRS_FRS, MURS, CB, BEACON_BANDS, BEACONS, beaconSchedule,
     TIME_STATIONS, minutesToAlert, privileges,
   };

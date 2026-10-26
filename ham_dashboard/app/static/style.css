@@ -671,3 +671,58 @@ table.prop-grid { table-layout: fixed; }
 .time-grid tbody th .mono { font-weight: 600; }
 .time-grid .gap { width: 6px; min-width: 6px; background: none; }
 .prop-grid.time-grid thead th:first-child, .prop-grid.time-grid tbody th { width: 84px; }
+
+/* ------------------------------------------------------------ collapsible cards */
+.collapse-btn {
+  order: 99; flex: none; width: 28px; height: 28px; margin: -4px -6px -4px 0; padding: 0;
+  display: inline-grid; place-items: center; border: 0; border-radius: 7px; background: transparent;
+  color: var(--muted); font-size: 16px; cursor: pointer;
+}
+.collapse-btn:hover { background: var(--card-2); color: var(--text); }
+.collapse-btn span { transition: transform .15s; }
+.card.collapsed .collapse-btn span { transform: rotate(-90deg); }
+.card.collapsed > :not(.card-head) { display: none !important; }
+.card.collapsed > .card-head { margin-bottom: 0; }
+.card.collapsed > .card-head > .tabs, .card.collapsed > .card-head > button:not(.collapse-btn) { display: none; }
+
+/* ------------------------------------------------------------ glossary terms */
+button.term {
+  border: 0; background: none; padding: 0; margin: 0; font: inherit; color: inherit; cursor: help;
+  text-decoration: underline dotted color-mix(in srgb, currentColor 55%, transparent); text-underline-offset: 3px;
+}
+button.term:hover, button.term[aria-expanded="true"] { color: var(--accent); text-decoration-color: var(--accent); }
+.term-pop {
+  position: absolute; z-index: 1200; width: min(320px, calc(100vw - 16px)); padding: 10px 12px 12px;
+  background: var(--card); color: var(--text); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 8px 28px rgb(0 0 0 / .28); font-size: 13px; line-height: 1.45;
+}
+.term-pop .term-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.term-pop p { margin: 6px 0 8px; color: var(--text-2); }
+.term-pop .term-close { border: 0; background: none; color: var(--muted); font-size: 18px; line-height: 1; cursor: pointer; padding: 2px 4px; }
+.glossary { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px 24px; margin: 0; }
+.gl-item { padding: 8px 10px; border-radius: 8px; transition: background .3s; }
+.gl-item dt { font-weight: 600; margin-bottom: 2px; }
+.gl-item dd { margin: 0; font-size: 13px; color: var(--text-2); }
+.gl-item.flash { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+
+/* ------------------------------------------------------------ browser vs app settings */
+.override-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warning); box-shadow: 0 0 0 2px var(--card); margin-left: -2px; }
+.config-compare .compare { margin-top: 0; }
+.config-compare .compare tr.differs td:nth-child(2) { color: var(--text); font-weight: 600; background: color-mix(in srgb, var(--warning) 16%, transparent); }
+.config-compare .note { margin-top: 6px; }
+
+/* ------------------------------------------------------------ what's new, tips */
+.whats-new {
+  display: flex; gap: 12px; align-items: flex-start; margin: 12px 16px 0; padding: 12px 14px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--card)); border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  border-radius: var(--radius); font-size: 13px;
+}
+.whats-new .wn-body { flex: 1; }
+.whats-new ul { margin: 6px 0; padding-left: 18px; }
+.whats-new li { margin: 2px 0; }
+.whats-new[hidden] { display: none; }
+.tip {
+  display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap;
+  margin-bottom: 10px; padding: 8px 10px; border-radius: 8px; font-size: 13px;
+  background: color-mix(in srgb, var(--accent) 9%, transparent); color: var(--text);
+}

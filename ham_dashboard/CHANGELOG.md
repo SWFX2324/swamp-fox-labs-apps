@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.4.0
+
+Easier to use and to find your way around.
+
+- **Collapsible cards**: every card has a ▾ at its top right to collapse it. The
+  dashboard remembers per browser, and settings can expand them all again.
+- **Plain-language explanations**: tap a dotted word (SFI, Kp, Bz, MUF, foF2,
+  sporadic-E, control point, Doppler, CTCSS and more) for a short explanation. The
+  Reference tab has the full glossary of 37 terms.
+- **Settings in two places, made clear**: settings show what this browser uses
+  next to the app's configuration (which Home Assistant's sensors and alerts use),
+  and a dot by your callsign at the top shows when this browser is overriding it.
+- **What's new**: after an update, a short note lists the new features once.
+- **Tips**: one-time tips point out that callsigns are clickable and that the
+  propagation map can be clicked to analyze a path.
+
 ## 1.3.0
 
 - **WWV and WWVH time signals** on the Propagation tab: your path rating to NIST's

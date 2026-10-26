@@ -40,9 +40,29 @@ differently for GMRS users and listeners:
 
 GMRS callsigns are never used to log in to amateur networks.
 
+### Finding your way around
+
+- **Collapse cards** you don't need with the ▾ at their top right. The dashboard
+  remembers per browser; **Expand all collapsed cards** in settings brings them back.
+- **Tap any dotted word** (MUF, Kp, foF2, sporadic-E…) for a short plain-language
+  explanation. The **Reference** tab has the full glossary.
+- **Callsigns are clickable** anywhere on the dashboard (to look them up), and DX
+  spots have a ↗ to analyze the path to that station.
+- After an update, a short **What's new** note lists the new features once.
+
 ### Settings
 
-Settings (⚙) is saved per browser, so each person can have their own:
+Settings (⚙) is saved per browser, so each person can have their own. There are two
+places settings live:
+
+- **The app's configuration** (set during setup, or on the app's Configuration tab
+  in Home Assistant) applies everywhere and is what Home Assistant's sensors, alerts,
+  saved paths and the model check use.
+- **This browser's settings** can override the callsign, grid and units for what
+  you see here. Settings shows both side by side, and a small dot appears next to
+  your callsign at the top while this browser is overriding the app.
+
+This browser's settings:
 
 - **Station**: your callsign and grid square for this browser, if different from the
   app's configuration.

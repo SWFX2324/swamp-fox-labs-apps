@@ -1357,6 +1357,7 @@ async function api(route, q, res) {
   switch (route) {
     case '/api/config':
       return send(res, 200, {
+        version: process.env.APP_VERSION || 'dev',
         station_type: options.station_type,
         callsign: options.callsign, grid: options.grid, distance_units: options.distance_units,
         setup: { needed: needsSetup(), done: setupDone(), canSave: canSaveSetup() },
