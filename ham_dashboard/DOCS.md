@@ -605,7 +605,7 @@ Replace `notify.mobile_app_your_phone` with your own notify service.
 | `grid` | Your Maidenhead grid square (4 or 6 characters, e.g. `DM14xd`). |
 | `distance_units` | `mi` or `km`. |
 | `dx_cluster_enabled` | Keep a telnet connection to a DX cluster for live spots. |
-| `dx_cluster_host` / `dx_cluster_port` | The cluster to use. Default: `dxc.ve7cc.net:23`. |
+| `dx_cluster_host` / `dx_cluster_port` | The cluster to use. Default: `w3lpl.net:7373`. While it's one of the public nodes `w3lpl.net:7373`, `dxc.ve7cc.net:23` or `dxc.nc7j.com:7373`, the app moves to the next of these when a node doesn't answer the login within 2 minutes or goes quiet for 10. Any other cluster is used as is. |
 | `qrz_username` / `qrz_password` | Optional. Your QRZ.com login, for worldwide callsign lookups. The password is only sent to QRZ and is never shown in the dashboard or logs. |
 | `aprs_enabled` | Keep a receive-only APRS-IS connection for the APRS tab. Needs `callsign` and `grid`. |
 | `aprs_radius` | How far around your grid to receive APRS stations, in your distance units (10–300, default 100). |
