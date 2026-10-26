@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.5.1
+
+- Fixed NOAA alerts failing since 1.5.0, which also showed "NOAA SWPC not
+  responding" on the Space weather cards. The enforced AppArmor profile blocked
+  Node.js from reading its own locale data (`/usr/share/icu`), which sorting the
+  alerts needed; the profile now allows reading `/usr/share`, and the alerts no
+  longer need locale data at all.
+
 ## 1.5.0
 
 Security.

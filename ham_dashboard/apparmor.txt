@@ -46,10 +46,12 @@ profile ham_dashboard flags=(attach_disconnected,mediate_deleted) {
     network inet dgram,
     network inet6 dgram,
 
-    # Node.js and its libraries
+    # Node.js and its libraries, and their read-only data (ICU's locale and
+    # collation data in /usr/share/icu, time zones in /usr/share/zoneinfo)
     /usr/bin/node rm,
     /usr/lib/** rm,
     /lib/** rm,
+    /usr/share/** r,
 
     # The app's code (read only)
     /app/** r,

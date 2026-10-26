@@ -213,7 +213,8 @@ function alerts() {
         return { id: a.product_id, time: String(a.issue_datetime).replace(' ', 'T') + 'Z', title: title.trim(), message: msg };
       })
       .filter(a => Date.parse(a.time) > cutoff)
-      .sort((a, b) => b.time.localeCompare(a.time))
+      // ISO times sort as plain strings; no locale-aware (ICU) compare needed.
+      .sort((a, b) => (a.time < b.time ? 1 : a.time > b.time ? -1 : 0))
       .slice(0, 20);
   });
 }
