@@ -1,6 +1,7 @@
 # Checks every push and pull request: Home Assistant's app linter on
 # config.yaml, that the AppArmor profile parses, a syntax check of every
-# script, the unit and end-to-end tests, and the blueprints.
+# script, the unit and end-to-end tests, the blueprints, and the built image
+# running under its enforced AppArmor profile.
 name: Checks
 
 on:
@@ -43,3 +44,18 @@ jobs:
         run: |
           python3 -c "import yaml" 2>/dev/null || pip install --quiet pyyaml
           python3 .github/scripts/check_blueprints.py
+
+  apparmor:
+    name: Image under AppArmor
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build the image
+        run: docker build --quiet -t ham-dashboard:ci --build-arg BUILD_VERSION=ci ham_dashboard
+      # Loaded into the runner's kernel and enforced, as Home Assistant does.
+      - name: Load the AppArmor profile
+        run: |
+          sudo apt-get install -y -qq apparmor > /dev/null
+          sudo apparmor_parser -r -W ham_dashboard/apparmor.txt
+      - name: Run the image and call every endpoint
+        run: bash .github/scripts/apparmor_smoke.sh

@@ -16,10 +16,10 @@ configuration:
     description: Keep a telnet connection to a DX cluster for live spots. Requires a callsign.
   dx_cluster_host:
     name: DX cluster host
-    description: Telnet host of the DX cluster (default dxc.ve7cc.net).
+    description: Telnet host of the DX cluster (default w3lpl.net). If it is w3lpl.net, dxc.ve7cc.net or dxc.nc7j.com, the app moves to the next of these when one stops answering.
   dx_cluster_port:
     name: DX cluster port
-    description: Telnet port of the DX cluster (default 23).
+    description: Telnet port of the DX cluster (default 7373).
   qrz_username:
     name: QRZ username
     description: Optional. Your QRZ.com username, for worldwide callsign lookups. A QRZ XML Logbook Data subscription unlocks full details; without one, QRZ returns basic info only.

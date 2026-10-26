@@ -23,8 +23,8 @@ options:
   grid: ""
   distance_units: mi
   dx_cluster_enabled: true
-  dx_cluster_host: dxc.ve7cc.net
-  dx_cluster_port: 23
+  dx_cluster_host: w3lpl.net
+  dx_cluster_port: 7373
   qrz_username: ""
   qrz_password: ""
   aprs_enabled: true

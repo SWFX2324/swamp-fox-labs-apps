@@ -48,8 +48,8 @@ function loadOptions() {
     grid: String(env.GRID ?? o.grid ?? '').trim(),
     distance_units: env.UNITS ?? o.distance_units ?? 'mi',
     dx_cluster_enabled: String(env.DX_CLUSTER ?? o.dx_cluster_enabled ?? true) !== 'false',
-    dx_cluster_host: env.DX_HOST ?? o.dx_cluster_host ?? 'dxc.ve7cc.net',
-    dx_cluster_port: +(env.DX_PORT ?? o.dx_cluster_port ?? 23),
+    dx_cluster_host: env.DX_HOST ?? o.dx_cluster_host ?? 'w3lpl.net',
+    dx_cluster_port: +(env.DX_PORT ?? o.dx_cluster_port ?? 7373),
     qrz_username: String(env.QRZ_USER ?? o.qrz_username ?? '').trim(),
     qrz_password: String(env.QRZ_PASS ?? o.qrz_password ?? ''),
     aprs_enabled: String(env.APRS ?? o.aprs_enabled ?? true) !== 'false',
@@ -92,13 +92,21 @@ const sourceStatus = new SourceStatus();
 const noteSource = (key, err) => sourceStatus.note(key, err);
 
 async function get(url, type = 'json') {
-  const r = await fetch(url, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(20_000) });
+  const where = url.split('?')[0];
+  // Errors name the source, so a log line says which one failed.
+  const named = e => Object.assign(new Error(`${where}: ${e.message}`), { status: e.status });
+  let r, body;
+  try {
+    r = await fetch(url, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(20_000) });
+    if (r.ok) body = await r.text();
+  } catch (e) { throw named(e); }
   if (!r.ok) {
-    const err = new Error(`${url.split('?')[0]} -> HTTP ${r.status}`);
+    const err = new Error(`${where} -> HTTP ${r.status}`);
     err.status = r.status;
     throw err;
   }
-  return type === 'json' ? r.json() : r.text();
+  if (type !== 'json') return body;
+  try { return JSON.parse(body); } catch (e) { throw named(e); }
 }
 
 const MIN = 60_000;
@@ -214,7 +222,8 @@ function alerts() {
         return { id: a.product_id, time: String(a.issue_datetime).replace(' ', 'T') + 'Z', title: title.trim(), message: msg };
       })
       .filter(a => Date.parse(a.time) > cutoff)
-      .sort((a, b) => b.time.localeCompare(a.time))
+      // ISO times sort as plain strings; no locale-aware (ICU) compare needed.
+      .sort((a, b) => (a.time < b.time ? 1 : a.time > b.time ? -1 : 0))
       .slice(0, 20);
   });
 }
@@ -331,12 +340,19 @@ function continentOf(call) {
   return null;
 }
 
+// Public cluster nodes, tried in turn while one of them is configured: a node
+// that stops answering is replaced by the next. A cluster the user picked
+// themselves is never swapped for another.
+const CLUSTER_NODES = [['w3lpl.net', 7373], ['dxc.ve7cc.net', 23], ['dxc.nc7j.com', 7373]];
+const LOGIN_TIMEOUT_MS = 2 * MIN;
+
 class Cluster {
   constructor() {
     this.spots = [];
     this.status = 'disabled';
     this.error = null;
     this.retryMs = 5000;
+    this.host = null;
   }
 
   start(opts) {
@@ -345,39 +361,66 @@ class Cluster {
     if (opts.station_type !== 'amateur') { this.status = 'no-license'; return; }
     if (!opts.callsign) { this.status = 'no-callsign'; return; }
     this.opts = opts;
+    const host = String(opts.dx_cluster_host).toLowerCase();
+    const at = CLUSTER_NODES.findIndex(([h, p]) => h === host && p === opts.dx_cluster_port);
+    // The configured node first, then the others in order of preference.
+    this.nodes = at < 0 ? [[opts.dx_cluster_host, opts.dx_cluster_port]] : [CLUSTER_NODES[at], ...CLUSTER_NODES.filter((_, i) => i !== at)];
+    this.node = 0;
     this.connect();
   }
 
   connect() {
-    const { dx_cluster_host: host, dx_cluster_port: port, callsign } = this.opts;
+    const [host, port] = this.nodes[this.node];
+    const { callsign } = this.opts;
+    this.host = `${host}:${port}`;
     this.status = 'connecting';
+    this.error = null;
     let buf = '';
-    let loggedIn = false;
+    let prompts = 0;
+    let answered = false; // the cluster replied to the login
     const sock = net.connect(port, host);
     sock.setEncoding('latin1');
     sock.setKeepAlive(true, 60_000);
+    // Some nodes accept the connection but never get past the login.
+    const loginTimer = setTimeout(() => sock.destroy(new Error('no answer to the login')), LOGIN_TIMEOUT_MS);
     sock.setTimeout(10 * MIN, () => sock.destroy(new Error('no data for 10 minutes')));
+    // Not an echo of what we typed, and not a refusal.
+    const greets = text => text.toUpperCase().includes(callsign.toUpperCase()) && text.trim().toUpperCase() !== callsign.toUpperCase() && !/not a valid|invalid/i.test(text);
+    const loggedIn = () => {
+      if (answered) return;
+      answered = true;
+      clearTimeout(loginTimer);
+      this.status = 'connected';
+      this.retryMs = 5000;
+      console.log(`[cluster] logged in to ${host}:${port} as ${callsign}`);
+    };
     sock.on('data', chunk => {
       buf += chunk;
       let i;
       while ((i = buf.indexOf('\n')) >= 0) {
-        this.line(buf.slice(0, i).replace(/\r$/, ''));
+        const text = buf.slice(0, i).replace(/\r$/, '');
         buf = buf.slice(i + 1);
+        // The node greets the callsign (or sends a spot) once the login worked.
+        if (prompts && !answered && (greets(text) || /^DX de /i.test(text))) loggedIn();
+        this.line(text);
       }
-      if (!loggedIn && /(login|call)[^\n]*:\s*$/i.test(buf)) {
+      // Answer every login prompt: a node may ask again if it missed the first.
+      if (!answered && /(login|call)[^\n]*:\s*$/i.test(buf)) {
+        buf = '';
+        if (++prompts > 3) return sock.destroy(new Error('login refused'));
         sock.write(callsign + '\r\n');
-        loggedIn = true;
-        this.status = 'connected';
-        this.error = null;
-        this.retryMs = 5000;
-        console.log(`[cluster] logged in to ${host}:${port} as ${callsign}`);
       }
       if (buf.length > 8192) buf = buf.slice(-1024);
     });
     sock.on('error', err => { this.error = err.message; });
     sock.on('close', () => {
+      clearTimeout(loginTimer);
       this.status = 'reconnecting';
-      console.warn(`[cluster] disconnected (${this.error || 'closed'}), retry in ${this.retryMs / 1000}s`);
+      // A node that never let us in, or went quiet, gives way to the next one.
+      const next = this.nodes.length > 1 && (!answered || /no data/.test(this.error || ''));
+      if (next) this.node = (this.node + 1) % this.nodes.length;
+      const [nh, np] = this.nodes[this.node];
+      console.warn(`[cluster] disconnected from ${host}:${port} (${this.error || 'closed'}), retry ${next ? `with ${nh}:${np} ` : ''}in ${this.retryMs / 1000}s`);
       setTimeout(() => this.connect(), this.retryMs);
       this.retryMs = Math.min(this.retryMs * 2, 5 * MIN);
     });
@@ -1364,7 +1407,7 @@ async function api(route, q, res, req) {
         setup: { needed: needsSetup(), done: setupDone(), canSave: canSaveSetup() },
         viewer: await users.viewer(req),
         features: { aprs: options.aprs_enabled, dx_cluster: options.dx_cluster_enabled, nws: options.nws_alerts, ha_sensors: options.ha_sensors },
-        cluster: { status: cluster.status, host: options.dx_cluster_host, error: cluster.error },
+        cluster: { status: cluster.status, host: cluster.host || options.dx_cluster_host, error: cluster.error },
         qrz: qrzConfigured(),
         ha: ha.status(),
         spot_watch: options.spot_watch,
@@ -1431,7 +1474,7 @@ async function api(route, q, res, req) {
         station_type: options.station_type, grid: options.grid,
         sources: sourceStatus.report(),
         live: {
-          cluster: { status: cluster.status, host: options.dx_cluster_host, error: cluster.error ?? null, spots: cluster.spots.length },
+          cluster: { status: cluster.status, host: cluster.host || options.dx_cluster_host, error: cluster.error ?? null, spots: cluster.spots.length },
           aprs: { status: a.status, server: a.server ?? null, error: a.error ?? null, stations: a.stations.length, packets: a.packets },
           ha: ha.status(),
           users: { error: users.lastError },
@@ -1473,7 +1516,7 @@ async function api(route, q, res, req) {
     case '/api/ionosondes':
       return send(res, 200, await ionosondes());
     case '/api/spots':
-      return send(res, 200, { status: cluster.status, host: options.dx_cluster_host, error: cluster.error, spots: cluster.spots });
+      return send(res, 200, { status: cluster.status, host: cluster.host || options.dx_cluster_host, error: cluster.error, spots: cluster.spots });
     case '/api/psk': {
       const call = String(q.get('call') || options.callsign).toUpperCase();
       const minutes = [60, 360, 1440].includes(+q.get('minutes')) ? +q.get('minutes') : 60;

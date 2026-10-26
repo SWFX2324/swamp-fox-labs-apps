@@ -22,7 +22,30 @@ Easier to automate, better documented, and tested end to end.
 - **End-to-end tests**: CI now starts the whole server against saved responses
   from every outside service and checks each part of the API, the security rules,
   and that recent data survives a restart. Blueprints are checked in CI too.
+- **AppArmor checked in CI**: every change now builds the real image and runs it
+  under its enforced AppArmor profile, calling every endpoint and failing on any
+  denied access, so a problem like 1.5.0's blocked locale data is caught first.
 - The dashboard now says "app" instead of "add-on", matching Home Assistant.
+
+## 1.5.2
+
+- **DX cluster spots work again.** The VE7CC cluster, the default until now, has
+  stopped answering logins: the app sent its callsign, reported itself logged in,
+  and then waited for spots that never came, reconnecting every 10 minutes. The
+  app now only reports a connection once the cluster answers, and when one of the
+  public nodes (W3LPL, VE7CC, NC7J) doesn't answer within 2 minutes or goes quiet,
+  it moves to the next. W3LPL (`w3lpl.net:7373`) is the new default; existing
+  installs set to VE7CC move to it automatically while VE7CC isn't answering. A
+  cluster you chose yourself is never replaced.
+- Errors fetching data now name the source, so the log shows which one failed.
+
+## 1.5.1
+
+- Fixed NOAA alerts failing since 1.5.0, which also showed "NOAA SWPC not
+  responding" on the Space weather cards. The enforced AppArmor profile blocked
+  Node.js from reading its own locale data (`/usr/share/icu`), which sorting the
+  alerts needed; the profile now allows reading `/usr/share`, and the alerts no
+  longer need locale data at all.
 
 ## 1.5.0
 
