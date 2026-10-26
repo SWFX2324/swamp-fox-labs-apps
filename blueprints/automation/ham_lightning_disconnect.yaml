@@ -1,0 +1,81 @@
+blueprint:
+  name: Ham Radio Dashboard – disconnect antennas when lightning is near
+  description: >-
+    Turn off switches (for example a smart relay that grounds or disconnects your
+    antenna) when the Ham Radio Dashboard's storm safety turns to Danger, and
+    optionally turn them back on once it has been safe for a while. This is an aid,
+    not a guarantee: disconnect antennas whenever you hear thunder, whatever the
+    dashboard says.
+  domain: automation
+  source_url: https://github.com/SWFX2324/swamp-fox-labs-apps/blob/main/blueprints/automation/ham_lightning_disconnect.yaml
+  input:
+    danger_sensor:
+      name: Lightning danger sensor
+      default: binary_sensor.ham_lightning_danger
+      selector:
+        entity:
+          filter:
+            - domain: binary_sensor
+    switches:
+      name: Switches to turn off
+      description: The antenna relays or other switches to turn off on Danger.
+      selector:
+        target:
+          entity:
+            - domain: switch
+    reconnect:
+      name: Turn back on when safe
+      description: Turn the switches back on after it has been safe for the time below.
+      default: false
+      selector:
+        boolean: {}
+    safe_minutes:
+      name: Safe for (minutes)
+      default: 30
+      selector:
+        number:
+          min: 5
+          max: 240
+          step: 5
+          unit_of_measurement: min
+    extra_actions:
+      name: Also do
+      description: Optional extra actions on Danger, for example a notification.
+      default: []
+      selector:
+        action: {}
+
+mode: restart
+
+triggers:
+  - trigger: state
+    entity_id: !input danger_sensor
+    to: "on"
+    id: danger
+  - trigger: state
+    entity_id: !input danger_sensor
+    to: "off"
+    for:
+      minutes: !input safe_minutes
+    id: safe
+
+variables:
+  reconnect: !input reconnect
+
+actions:
+  - choose:
+      - conditions:
+          - condition: trigger
+            id: danger
+        sequence:
+          - action: switch.turn_off
+            target: !input switches
+          - sequence: !input extra_actions
+      - conditions:
+          - condition: trigger
+            id: safe
+          - condition: template
+            value_template: "{{ reconnect }}"
+        sequence:
+          - action: switch.turn_on
+            target: !input switches

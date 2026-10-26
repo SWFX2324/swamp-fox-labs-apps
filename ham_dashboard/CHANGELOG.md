@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.6.0
+
+Easier to automate, better documented, and tested end to end.
+
+- **Blueprints**: five ready-made Home Assistant automations, importable with one
+  click from the documentation: a VHF band opens, a band opens on a saved path, a
+  watched DX callsign is spotted, a POTA activation appears nearby, and turning
+  off antenna switches when lightning is near (optionally back on once it's safe).
+- **Documentation reorganized** by tab, with a screenshot of each, a contents list,
+  a new **Troubleshooting and FAQ** section, and a **Security and privacy** section.
+- **End-to-end tests**: CI now starts the whole server against saved responses
+  from every outside service and checks each part of the API, the security rules,
+  and that recent data survives a restart. Blueprints are checked in CI too.
+- The dashboard now says "app" instead of "add-on", matching Home Assistant.
+
 ## 1.5.0
 
 Security.

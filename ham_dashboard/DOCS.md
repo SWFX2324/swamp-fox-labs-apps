@@ -6,6 +6,25 @@ tabs: **Space weather**, **Propagation**, **Repeaters**, **APRS**, **POTA**,
 **Satellites**, **Callsign lookup** and **Reference**. It also publishes its data to Home Assistant as sensors and
 fires events you can use in automations (see [Home Assistant sensors and alerts](#home-assistant-sensors-and-alerts)).
 
+## Contents
+
+- [Getting started](#getting-started)
+- [Space weather](#space-weather)
+- [Propagation](#propagation)
+- [Repeaters](#repeaters)
+- [APRS](#aprs)
+- [POTA](#pota)
+- [Satellites](#satellites)
+- [Callsign lookup](#callsign-lookup)
+- [Reference](#reference)
+- [Maps](#maps)
+- [Home Assistant sensors and alerts](#home-assistant-sensors-and-alerts)
+- [Configuration](#configuration)
+- [Troubleshooting and FAQ](#troubleshooting-and-faq)
+- [Security and privacy](#security-and-privacy)
+- [Data sources](#data-sources)
+- [Notes](#notes)
+
 ## Getting started
 
 The first time you open the dashboard, a short **setup** asks:
@@ -83,28 +102,9 @@ paste into a [GitHub issue](https://github.com/SWFX2324/swamp-fox-labs-apps/issu
 It leaves out your callsign and shortens your grid to 4 characters, since issues
 are public.
 
-## Maps
-
-The gray line, Repeaters, APRS, POTA and Lookup maps can be zoomed and panned.
-Click a map first to zoom with the scroll wheel (so scrolling the page never zooms
-a map by accident), pinch on a phone, or use the + and − buttons. The ⌂ button
-resets the view.
-
-The layers button (top right) picks the base map, remembered per map:
-
-- **Dark** and **Streets** – [OpenStreetMap](https://www.openstreetmap.org/copyright).
-  Dark is the same map with a dark filter.
-- **Satellite (US)** and **Topo (US)** – [USGS The National Map](https://www.usgs.gov/programs/national-geospatial-program/national-map),
-  public domain. Detailed across the US; outside the US there's imagery only when
-  zoomed far out.
-- **Plain (offline)** – the simple land outline bundled with the add-on, for when
-  you'd rather not load map tiles.
-
-World maps also have a **Day / night** overlay you can switch off. Map tiles are
-loaded by your browser straight from OpenStreetMap or USGS, which means those
-services see which area you're viewing.
-
 ## Space weather
+
+![The Space weather tab](https://raw.githubusercontent.com/SWFX2324/swamp-fox-labs-apps/main/docs/screenshots/weather.png)
 
 - **Solar & geomagnetic conditions** – SFI, sunspot number, A and K index, X-ray flux,
   solar wind speed, Bz and estimated noise floor.
@@ -162,6 +162,8 @@ services see which area you're viewing.
   forecast text.
 
 ## Propagation
+
+![The Propagation tab](https://raw.githubusercontent.com/SWFX2324/swamp-fox-labs-apps/main/docs/screenshots/propagation.png)
 
 Point-to-point analysis: how each HF band should work from your QTH to anywhere,
 right now and over the next 24 hours.
@@ -261,19 +263,9 @@ it (see [Home Assistant sensors and alerts](#home-assistant-sensors-and-alerts))
 Saved paths are stored by the app, so every browser sees the same list. Removing a
 path removes its sensor.
 
-## Reference
-
-- **US amateur band plan**: where each license class (Technician, General, Advanced,
-  Amateur Extra) can transmit on every band from 160 m to 70 cm, with CW/data,
-  phone and all-mode segments drawn to scale and power notes where they differ.
-  It opens on your own class, from the FCC record for your callsign, and remembers
-  the class you pick. From FCC Part 97; check the current rules or the ARRL band
-  chart before you transmit.
-- **GMRS and FRS channels**: all 22 channels with GMRS and FRS power limits and the
-  repeater input for channels 15–22. GMRS stations see this first.
-- **MURS and CB**: the license-free services, with their channels and power.
-
 ## Repeaters
+
+![The Repeaters tab](https://raw.githubusercontent.com/SWFX2324/swamp-fox-labs-apps/main/docs/screenshots/repeaters.png)
 
 Repeaters near your grid square, from the community-maintained
 [HearHam](https://hearham.com/) directory.
@@ -292,6 +284,8 @@ updates it instantly. Listings can be out of date, so confirm frequency and tone
 before you transmit.
 
 ## APRS
+
+![The APRS tab](https://raw.githubusercontent.com/SWFX2324/swamp-fox-labs-apps/main/docs/screenshots/aprs.png)
 
 Live APRS activity around you, received directly from the
 [APRS-IS](https://www.aprs2.net/) network. The add-on keeps one receive-only
@@ -313,6 +307,8 @@ grid square; changing the grid in a browser moves the map but not the feed.
 
 ## POTA
 
+![The POTA tab](https://raw.githubusercontent.com/SWFX2324/swamp-fox-labs-apps/main/docs/screenshots/pota.png)
+
 Parks on the Air activators on the air right now, from [pota.app](https://pota.app/).
 
 - A world map with the live gray line, colored by mode (CW, phone, digital).
@@ -325,6 +321,8 @@ Spots refresh every minute while the tab is open. SOTA isn't included: the SOTA 
 only allows approved applications.
 
 ## Satellites
+
+![The Satellites tab](https://raw.githubusercontent.com/SWFX2324/swamp-fox-labs-apps/main/docs/screenshots/satellites.png)
 
 Pass predictions for your grid square over the next 24 hours, for popular FM and
 linear amateur satellites: ISS, SO-50, PO-101, AO-91, RS-44, FO-29 and AO-7.
@@ -344,6 +342,8 @@ Satellites go on and off the air often, so check
 
 ## Callsign lookup
 
+![The Callsign lookup tab](https://raw.githubusercontent.com/SWFX2324/swamp-fox-labs-apps/main/docs/screenshots/lookup.png)
+
 Type a callsign, or click any callsign in the DX spots, PSKReporter or repeater
 lists. The lookup shows name, address, grid, license class and dates, QSL methods,
 the QRZ photo when there is one, and the distance, beam heading (short and long
@@ -358,31 +358,40 @@ path) and great-circle path from your QTH.
 
 Each callsign is cached for a day so repeated lookups don't hit QRZ again.
 
-## Configuration
+## Reference
 
-| Option | Description |
-| --- | --- |
-| `station_type` | `amateur`, `gmrs` or `listener`. See [Licensed, GMRS or just listening](#licensed-gmrs-or-just-listening). Set by setup. |
-| `callsign` | Your callsign. Used to log in to the DX cluster and as the default for PSKReporter. Optional for GMRS and empty for listeners. |
-| `grid` | Your Maidenhead grid square (4 or 6 characters, e.g. `DM14xd`). |
-| `distance_units` | `mi` or `km`. |
-| `dx_cluster_enabled` | Keep a telnet connection to a DX cluster for live spots. |
-| `dx_cluster_host` / `dx_cluster_port` | The cluster to use. Default: `dxc.ve7cc.net:23`. |
-| `qrz_username` / `qrz_password` | Optional. Your QRZ.com login, for worldwide callsign lookups. The password is only sent to QRZ and is never shown in the dashboard or logs. |
-| `aprs_enabled` | Keep a receive-only APRS-IS connection for the APRS tab. Needs `callsign` and `grid`. |
-| `aprs_radius` | How far around your grid to receive APRS stations, in your distance units (10–300, default 100). |
-| `ha_sensors` | Publish `sensor.ham_*` and `binary_sensor.ham_*` entities and fire `ham_dashboard_*` events. On by default. |
-| `ha_mqtt` | When the Mosquitto broker app is installed, create the entities through MQTT discovery under a **Ham Radio** device. On by default. See [MQTT or REST](#mqtt-or-rest). |
-| `spot_watch` | Callsigns or prefixes to watch on the DX cluster, e.g. `VP8PJ` or `3Y0`. Matches are highlighted in the spots table and fire a `ham_dashboard_dx_spot` event. |
-| `pota_alert_radius` | Fire a `ham_dashboard_pota_spot` event for new POTA activations within this distance, in your units. `0` turns POTA alerts off. Default 100. |
-| `nws_alerts` | Use National Weather Service alerts and the hourly forecast for storm safety (US only). On by default. |
-| `lightning_entity` | Optional. A Home Assistant sensor whose state is the distance to the last lightning strike, e.g. `sensor.ecowitt_lightning_distance`. |
-| `lightning_alert_distance` | Strikes within this distance (your units) in the last 30 minutes mean Danger. Default 15. |
+![The Reference tab](https://raw.githubusercontent.com/SWFX2324/swamp-fox-labs-apps/main/docs/screenshots/reference.png)
 
-`callsign`, `grid` and `distance_units` are the defaults for everyone who opens the
-panel. Each person can also click the callsign/grid chip at the top right and enter
-their own. That choice is saved in their browser only, so several operators can
-share one Home Assistant. The QRZ login is shared by everyone using the panel.
+- **US amateur band plan**: where each license class (Technician, General, Advanced,
+  Amateur Extra) can transmit on every band from 160 m to 70 cm, with CW/data,
+  phone and all-mode segments drawn to scale and power notes where they differ.
+  It opens on your own class, from the FCC record for your callsign, and remembers
+  the class you pick. From FCC Part 97; check the current rules or the ARRL band
+  chart before you transmit.
+- **GMRS and FRS channels**: all 22 channels with GMRS and FRS power limits and the
+  repeater input for channels 15–22. GMRS stations see this first.
+- **MURS and CB**: the license-free services, with their channels and power.
+
+## Maps
+
+The gray line, Repeaters, APRS, POTA and Lookup maps can be zoomed and panned.
+Click a map first to zoom with the scroll wheel (so scrolling the page never zooms
+a map by accident), pinch on a phone, or use the + and − buttons. The ⌂ button
+resets the view.
+
+The layers button (top right) picks the base map, remembered per map:
+
+- **Dark** and **Streets** – [OpenStreetMap](https://www.openstreetmap.org/copyright).
+  Dark is the same map with a dark filter.
+- **Satellite (US)** and **Topo (US)** – [USGS The National Map](https://www.usgs.gov/programs/national-geospatial-program/national-map),
+  public domain. Detailed across the US; outside the US there's imagery only when
+  zoomed far out.
+- **Plain (offline)** – the simple land outline bundled with the add-on, for when
+  you'd rather not load map tiles.
+
+World maps also have a **Day / night** overlay you can switch off. Map tiles are
+loaded by your browser straight from OpenStreetMap or USGS, which means those
+services see which area you're viewing.
 
 ## Home Assistant sensors and alerts
 
@@ -431,6 +440,28 @@ won't break your automations. If one ever has to change, the changelog will say 
 first.
 
 DX and POTA alerts fire at most once every 30 minutes per station and band.
+
+### Blueprints
+
+Blueprints are ready-made automations: import one, pick what should happen (a phone
+notification, a light, anything Home Assistant can do), and save. No YAML needed.
+Each one fills in useful details you can use in your notification text, listed in
+its description.
+
+| Blueprint | What it does | Import |
+| --- | --- | --- |
+| **VHF band opens** | Runs your actions when 6 m or 2 m opens near you. | [Import](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FSWFX2324%2Fswamp-fox-labs-apps%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fham_vhf_opening.yaml) |
+| **Band opens on a saved path** | Runs your actions when a band turns Good on one of your saved paths (or a chosen one). | [Import](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FSWFX2324%2Fswamp-fox-labs-apps%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fham_path_open.yaml) |
+| **Watched DX is spotted** | Runs your actions when the DX cluster spots a callsign on your `spot_watch` list, optionally only on some bands. | [Import](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FSWFX2324%2Fswamp-fox-labs-apps%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fham_dx_spot.yaml) |
+| **POTA activation nearby** | Runs your actions when a new park activation appears within a distance you choose. | [Import](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FSWFX2324%2Fswamp-fox-labs-apps%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fham_pota_nearby.yaml) |
+| **Disconnect antennas when lightning is near** | Runs your actions turns off switches (an antenna relay, say) when storm safety turns to Danger, and optionally turns them back on after it has been safe for a while. | [Import](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FSWFX2324%2Fswamp-fox-labs-apps%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fham_lightning_disconnect.yaml) |
+
+The **Import** links open your Home Assistant (via my.home-assistant.io). You can
+also go to Settings → Automations & scenes → Blueprints → **Import blueprint** and
+paste the blueprint's address from the
+[blueprints folder](https://github.com/SWFX2324/swamp-fox-labs-apps/tree/main/blueprints/automation).
+The lightning blueprint is an aid, not a guarantee: disconnect antennas whenever you
+hear thunder.
 
 ### MQTT or REST
 
@@ -565,26 +596,83 @@ Replace `notify.mobile_app_your_phone` with your own notify service.
           max {{ state_attr('sensor.ham_next_good_pass', 'max_elevation') | round }}°
 ```
 
-## Data sources
+## Configuration
 
-- [N0NBH / HamQSL](https://www.hamqsl.com/solar.html) solar XML (cached 30 min)
-- [NOAA SWPC](https://www.swpc.noaa.gov/) JSON and text products (5–60 min)
-- [KC2G](https://prop.kc2g.com/) ionosonde data and MUF/foF2 maps (10 min)
-- [PSKReporter](https://pskreporter.info/) (cached 5 min per callsign, as they request)
-- [HearHam](https://hearham.com/) repeater directory (downloaded at most once a day)
-- [QRZ.com](https://www.qrz.com/) XML callbook and [callook.info](https://callook.info/)
-  FCC data (cached a day per callsign, fetched only when you look a call up)
-- DX cluster via telnet (live)
-- [APRS-IS](https://www.aprs2.net/) via `rotate.aprs2.net:14580`, receive-only (live)
-- [POTA](https://pota.app/) activator spots (cached 1 min; polled every 2 min for alerts)
-- [CelesTrak](https://celestrak.org/) amateur satellite elements (cached 12 h)
-- [PSKReporter](https://pskreporter.info/) area query for band activity and VHF openings (one query every 5 minutes, as PSKReporter asks)
-- [National Weather Service](https://www.weather.gov/documentation/services-web-api) alerts (cached 2 min) and hourly forecast (cached 30 min)
+| Option | Description |
+| --- | --- |
+| `station_type` | `amateur`, `gmrs` or `listener`. See [Licensed, GMRS or just listening](#licensed-gmrs-or-just-listening). Set by setup. |
+| `callsign` | Your callsign. Used to log in to the DX cluster and as the default for PSKReporter. Optional for GMRS and empty for listeners. |
+| `grid` | Your Maidenhead grid square (4 or 6 characters, e.g. `DM14xd`). |
+| `distance_units` | `mi` or `km`. |
+| `dx_cluster_enabled` | Keep a telnet connection to a DX cluster for live spots. |
+| `dx_cluster_host` / `dx_cluster_port` | The cluster to use. Default: `dxc.ve7cc.net:23`. |
+| `qrz_username` / `qrz_password` | Optional. Your QRZ.com login, for worldwide callsign lookups. The password is only sent to QRZ and is never shown in the dashboard or logs. |
+| `aprs_enabled` | Keep a receive-only APRS-IS connection for the APRS tab. Needs `callsign` and `grid`. |
+| `aprs_radius` | How far around your grid to receive APRS stations, in your distance units (10–300, default 100). |
+| `ha_sensors` | Publish `sensor.ham_*` and `binary_sensor.ham_*` entities and fire `ham_dashboard_*` events. On by default. |
+| `ha_mqtt` | When the Mosquitto broker app is installed, create the entities through MQTT discovery under a **Ham Radio** device. On by default. See [MQTT or REST](#mqtt-or-rest). |
+| `spot_watch` | Callsigns or prefixes to watch on the DX cluster, e.g. `VP8PJ` or `3Y0`. Matches are highlighted in the spots table and fire a `ham_dashboard_dx_spot` event. |
+| `pota_alert_radius` | Fire a `ham_dashboard_pota_spot` event for new POTA activations within this distance, in your units. `0` turns POTA alerts off. Default 100. |
+| `nws_alerts` | Use National Weather Service alerts and the hourly forecast for storm safety (US only). On by default. |
+| `lightning_entity` | Optional. A Home Assistant sensor whose state is the distance to the last lightning strike, e.g. `sensor.ecowitt_lightning_distance`. |
+| `lightning_alert_distance` | Strikes within this distance (your units) in the last 30 minutes mean Danger. Default 15. |
 
-The add-on caches everything server-side, so opening the dashboard on several
-devices doesn't multiply the requests to these free services.
+`callsign`, `grid` and `distance_units` are the defaults for everyone who opens the
+panel. Each person can also click the callsign/grid chip at the top right and enter
+their own. That choice is saved in their browser only, so several operators can
+share one Home Assistant. The QRZ login is shared by everyone using the panel.
 
-## Notes
+## Troubleshooting and FAQ
+
+**The panel says "Open the dashboard from the Home Assistant sidebar."**
+The dashboard only accepts connections through Home Assistant's own proxy (see
+[Security and privacy](#security-and-privacy)). Open it from the **Ham Radio** item
+in the sidebar rather than by its internal address.
+
+**A card says "PSKReporter rate limited", or VHF openings and "Heard nearby" are
+empty.** PSKReporter asks clients to query at most every 5 minutes and sometimes
+asks the app to slow down, especially right after a restart if it was queried
+shortly before. The app waits 15 minutes and tries again on its own; the cards say
+so while they wait. Recent results are kept across restarts, so this is rarer from
+1.2.0 on.
+
+**The band table says "no nearby ionosonde".** No ionosonde within 3000 km has
+reported in the last 3 hours, so the local estimate isn't available. The HamQSL
+ratings and the measured "Heard nearby" column still work.
+
+**My phone shows a different callsign or grid than my desktop.** Settings are
+saved per browser, and a browser can override the app's configuration. Settings
+shows both side by side, and a dot by your callsign at the top marks an override.
+**Use app configuration** in settings clears the override.
+
+**A band shows Closed but I can hear stations (or the other way round).** The
+ratings are estimates from a model, not measurements. The **Heard** column on the
+Propagation tab and "Heard nearby" in the band table are measured and win when they
+disagree. The app keeps a log comparing the two; **Download the log** on the
+Propagation tab helps tune the model.
+
+**The DX cluster panel is empty.** The cluster needs a licensed amateur callsign
+to log in. Check settings → **Data sources and connections** for the DX cluster's
+status.
+
+**Sensors don't show up in Home Assistant.** Check that `ha_sensors` is on, then
+look at **Home Assistant** in settings → **Data sources and connections**. With the
+Mosquitto broker installed the sensors appear as an MQTT device; otherwise they're
+created directly (see [MQTT or REST](#mqtt-or-rest)). A saved path's sensor appears
+within 5 minutes of saving it.
+
+**Something looks broken after an update.** Reload the page. If it persists,
+reporting it helps (below).
+
+**Reporting a problem.** In settings → **Data sources and connections**, use
+**Copy details for a bug report** (it leaves out your callsign and shortens your
+grid) and paste it into a
+[GitHub issue](https://github.com/SWFX2324/swamp-fox-labs-apps/issues/new/choose),
+with the app's log from Settings → Apps → Ham Radio Dashboard → **Log**.
+
+## Security and privacy
+
+The dashboard is receive-only: it never transmits, and it only reads public data.
 
 - **Restarts.** PSKReporter results and any rate-limit back-off are kept in the
   app's storage, so restarting or updating the app doesn't refetch them straight
@@ -608,6 +696,28 @@ devices doesn't multiply the requests to these free services.
   configuration and is only ever sent to QRZ. Map tiles come from OpenStreetMap
   and USGS, which see the map area you're viewing (the **Plain** layer avoids
   them), and PSKReporter queries include your 2-character grid field.
+
+## Data sources
+
+- [N0NBH / HamQSL](https://www.hamqsl.com/solar.html) solar XML (cached 30 min)
+- [NOAA SWPC](https://www.swpc.noaa.gov/) JSON and text products (5–60 min)
+- [KC2G](https://prop.kc2g.com/) ionosonde data and MUF/foF2 maps (10 min)
+- [PSKReporter](https://pskreporter.info/) (cached 5 min per callsign, as they request)
+- [HearHam](https://hearham.com/) repeater directory (downloaded at most once a day)
+- [QRZ.com](https://www.qrz.com/) XML callbook and [callook.info](https://callook.info/)
+  FCC data (cached a day per callsign, fetched only when you look a call up)
+- DX cluster via telnet (live)
+- [APRS-IS](https://www.aprs2.net/) via `rotate.aprs2.net:14580`, receive-only (live)
+- [POTA](https://pota.app/) activator spots (cached 1 min; polled every 2 min for alerts)
+- [CelesTrak](https://celestrak.org/) amateur satellite elements (cached 12 h)
+- [PSKReporter](https://pskreporter.info/) area query for band activity and VHF openings (one query every 5 minutes, as PSKReporter asks)
+- [National Weather Service](https://www.weather.gov/documentation/services-web-api) alerts (cached 2 min) and hourly forecast (cached 30 min)
+
+The add-on caches everything server-side, so opening the dashboard on several
+devices doesn't multiply the requests to these free services.
+
+## Notes
+
 - The "At your QTH" rating and the Propagation tab are estimates, not VOACAP
   predictions. Both are most useful when an ionosonde is reasonably close; the
   PSKReporter decodes shown next to them are the reality check.

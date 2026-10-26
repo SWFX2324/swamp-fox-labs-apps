@@ -1,0 +1,45 @@
+blueprint:
+  name: Ham Radio Dashboard – watched DX is spotted
+  description: >-
+    Run actions when the DX cluster spots a callsign on your watch list (the app's
+    spot_watch option). In your actions you can use {{ dx }}, {{ frequency }},
+    {{ band }}, {{ mode }}, {{ spotter }} and {{ comment }}, for example
+    "{{ dx }} spotted on {{ frequency }} kHz {{ mode }}".
+  domain: automation
+  source_url: https://github.com/SWFX2324/swamp-fox-labs-apps/blob/main/blueprints/automation/ham_dx_spot.yaml
+  input:
+    bands:
+      name: Bands
+      description: Only alert on these bands.
+      default: ["160m", "80m", "60m", "40m", "30m", "20m", "17m", "15m", "12m", "10m", "6m", "2m"]
+      selector:
+        select:
+          multiple: true
+          options: ["160m", "80m", "60m", "40m", "30m", "20m", "17m", "15m", "12m", "10m", "6m", "2m"]
+    actions:
+      name: Actions
+      description: What to do when a watched station is spotted.
+      selector:
+        action: {}
+
+mode: queued
+max: 10
+
+triggers:
+  - trigger: event
+    event_type: ham_dashboard_dx_spot
+
+variables:
+  bands: !input bands
+  dx: "{{ trigger.event.data.dx }}"
+  frequency: "{{ trigger.event.data.frequency_khz }}"
+  band: "{{ trigger.event.data.band }}"
+  mode: "{{ trigger.event.data.mode }}"
+  spotter: "{{ trigger.event.data.spotter }}"
+  comment: "{{ trigger.event.data.comment }}"
+
+conditions:
+  - condition: template
+    value_template: "{{ band in bands }}"
+
+actions: !input actions

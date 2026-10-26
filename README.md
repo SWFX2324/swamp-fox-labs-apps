@@ -43,18 +43,25 @@ CALLSIGN=N0CALL GRID=DM14xd PORT=8099 node ham_dashboard/app/server.js
 ```
 
 Then open http://localhost:8099. Outside Home Assistant any client may connect; set
-`INGRESS_ONLY=true` to test the "ingress proxy only" rule locally. Run the unit tests with:
+`INGRESS_ONLY=true` to test the "ingress proxy only" rule locally. Run the unit and
+end-to-end tests with:
 
 ```bash
 node --test "ham_dashboard/tests/*.test.js"
 ```
+
+The end-to-end tests start the server with every outside service replaced by saved
+responses in `ham_dashboard/tests/fixtures`, so they run offline.
+
+Home Assistant blueprints for the dashboard's events live in
+[`blueprints/automation`](blueprints/automation); the docs link each one for import.
 
 ### Releases
 
 Every push to `main` that touches `ham_dashboard/` runs two GitHub Actions:
 
 - **Checks** (on every push and pull request): Home Assistant's app linter, a syntax
-  check of every script and the unit tests.
+  check of every script, the unit and end-to-end tests, and a check of the blueprints.
 - **Build images**: builds `ghcr.io/swfx2324/ham-dashboard-amd64` and
   `ham-dashboard-aarch64`, tagged with the version in `config.yaml` and `latest`.
   Pull requests and other branches only build, so a released version's image is

@@ -995,7 +995,7 @@
     const status = $('#spotsStatus');
     $('#clusterHost').textContent = d?.host || '';
     if (!d) { status.textContent = ''; return; }
-    const STATUS = { connected: `Live · ${d.host}`, connecting: 'Connecting…', reconnecting: 'Reconnecting…', disabled: 'Disabled in add-on options', 'no-callsign': 'Set a callsign in the add-on options to connect', 'no-license': 'DX cluster spots need a licensed amateur callsign' };
+    const STATUS = { connected: `Live · ${d.host}`, connecting: 'Connecting…', reconnecting: 'Reconnecting…', disabled: 'Turned off in the app’s configuration', 'no-callsign': 'Set a callsign in the app’s configuration to connect', 'no-license': 'DX cluster spots need a licensed amateur callsign' };
     status.textContent = STATUS[d.status] || d.status;
 
     const mode = $('#modeFilter').value, cont = $('#contFilter').value;
@@ -1122,7 +1122,7 @@
     const sen = s.sensor;
     $('#stormSensor').innerHTML = !sen
       ? `<div class="tile"><span class="label">Lightning sensor</span><span class="value small">Not set up</span>
-          <span class="sub wrap">Add an Ecowitt WH57, Ambient Weather or ESPHome AS3935 sensor to Home Assistant, then put its entity ID in the add-on’s <b>Lightning sensor entity</b> option to get strike distances.</span></div>`
+          <span class="sub wrap">Add an Ecowitt WH57, Ambient Weather or ESPHome AS3935 sensor to Home Assistant, then put its entity ID in the app’s <b>Lightning sensor entity</b> option to get strike distances.</span></div>`
       : sen.error
         ? `<div class="tile"><span class="label">Lightning sensor</span><span class="value small">Unavailable</span><span class="sub wrap">${esc(sen.entity)}: ${esc(sen.error)}</span></div>`
         : `<div class="tile"><span class="label">Last strike · ${esc(sen.name)}</span>
@@ -1131,7 +1131,7 @@
 
     const hours = s.nws?.hourly || [];
     $('#stormForecast').innerHTML = !s.nws
-      ? `<div class="tile"><span class="label">NWS forecast</span><span class="value small">Off</span><span class="sub wrap">Turn on NWS weather alerts in the add-on options (US only).</span></div>`
+      ? `<div class="tile"><span class="label">NWS forecast</span><span class="value small">Off</span><span class="sub wrap">Turn on NWS weather alerts in the app’s configuration (US only).</span></div>`
       : !hours.length
         ? `<div class="tile"><span class="label">NWS forecast</span><span class="value small">Unavailable</span><span class="sub wrap">The National Weather Service only covers the US.</span></div>`
         : `<div class="tile"><span class="label">Next 12 hours · thunder ${hours.some(h => /thunder/i.test(h.forecast)) ? 'in forecast' : 'not expected'}</span>
@@ -1450,8 +1450,8 @@
     if (!d) return;
     const STATUS = {
       connected: `Live · ${d.server}`, connecting: 'Connecting…', reconnecting: 'Reconnecting…',
-      disabled: 'Turned off in the add-on options', 'no-callsign': 'Set a callsign in the add-on options',
-      'no-grid': 'Set a grid square in the add-on options', error: `Unavailable: ${d.error || ''}`,
+      disabled: 'Turned off in the app’s configuration', 'no-callsign': 'Set a callsign in the app’s configuration',
+      'no-grid': 'Set a grid square in the app’s configuration', error: `Unavailable: ${d.error || ''}`,
     };
     $('#aprsStatus').textContent = STATUS[d.status] || d.status;
 
@@ -1468,8 +1468,8 @@
     const here = gridToLatLon(station().grid);
     const far = here && d.center && distanceKm(here, d.center) > (d.radiusKm || 0) / 2;
     $('#aprsNote').textContent = far
-      ? `The live feed covers ${fmtDist(d.radiusKm)} around the add-on’s grid square, not your browser’s. Change the grid in the add-on options to move it.`
-      : d.status === 'connected' ? `Receiving everything heard within ${fmtDist(d.radiusKm)} of the add-on’s grid square. Stations drop off after 3 hours of silence.` : '';
+      ? `The live feed covers ${fmtDist(d.radiusKm)} around the app’s grid square, not your browser’s. Change the grid in the app’s configuration to move it.`
+      : d.status === 'connected' ? `Receiving everything heard within ${fmtDist(d.radiusKm)} of the app’s grid square. Stations drop off after 3 hours of silence.` : '';
 
     if (!rows.length) {
       $('#aprsTable').innerHTML = `<tbody><tr><td class="empty">${d.status === 'connected'
@@ -1890,7 +1890,7 @@
       : '';
     $('#lookupNote').innerHTML = state.defaults.qrz
       ? 'Lookups use your QRZ account, with FCC data filling gaps for US calls.'
-      : 'US callsigns are looked up free from FCC data. For worldwide lookups, add your QRZ username and password on the add-on’s Configuration tab. Full QRZ details need a <a href="https://www.qrz.com/page/xml_data.html" target="_blank" rel="noopener">QRZ XML subscription</a>.';
+      : 'US callsigns are looked up free from FCC data. For worldwide lookups, add your QRZ username and password on the app’s Configuration tab. Full QRZ details need a <a href="https://www.qrz.com/page/xml_data.html" target="_blank" rel="noopener">QRZ XML subscription</a>.';
 
     const out = $('#lookupResult');
     const r = look.result;
@@ -2593,6 +2593,7 @@
 
   // Highlights per version, shown once after an update so new features get found.
   const WHATS_NEW = [
+    ['1.6.0', ['Ready-made Home Assistant blueprints for band openings, DX spots, nearby POTA and lightning; the Documentation tab has import links.']],
     ['1.4.0', [
       'Collapse any card with the ▾ button at its top right; the dashboard remembers.',
       'Tap a dotted word (MUF, Kp, foF2…) for a plain-language explanation; the full glossary is on the Reference tab.',

@@ -1,0 +1,45 @@
+blueprint:
+  name: Ham Radio Dashboard – VHF band opens
+  description: >-
+    Run actions, such as a phone notification, when the Ham Radio Dashboard sees
+    6 m or 2 m open near you (measured from PSKReporter). In your actions you can
+    use {{ band }}, {{ toward }}, {{ likely }}, {{ stations }} and {{ farthest }},
+    for example "{{ band }} is open toward {{ toward }} ({{ likely }})".
+  domain: automation
+  source_url: https://github.com/SWFX2324/swamp-fox-labs-apps/blob/main/blueprints/automation/ham_vhf_opening.yaml
+  input:
+    bands:
+      name: Bands
+      description: Which bands to alert on.
+      default: ["6m", "2m"]
+      selector:
+        select:
+          multiple: true
+          options: ["6m", "2m"]
+    actions:
+      name: Actions
+      description: What to do when a band opens, for example send a notification.
+      selector:
+        action: {}
+
+mode: queued
+max: 5
+
+triggers:
+  - trigger: event
+    event_type: ham_dashboard_vhf_opening
+
+variables:
+  bands: !input bands
+  band: "{{ trigger.event.data.band }}"
+  toward: "{{ trigger.event.data.toward or 'nearby' }}"
+  likely: "{{ trigger.event.data.likely or 'an opening' }}"
+  stations: "{{ trigger.event.data.stations }}"
+  farthest: >-
+    {{ trigger.event.data.farthest_call }} ({{ trigger.event.data.farthest_km }} km)
+
+conditions:
+  - condition: template
+    value_template: "{{ band in bands }}"
+
+actions: !input actions
