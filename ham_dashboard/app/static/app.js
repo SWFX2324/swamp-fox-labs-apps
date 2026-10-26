@@ -28,6 +28,7 @@
       grid: s.grid || d.grid || '',
       units: s.units || d.distance_units || 'mi',
       type: d.station_type || 'amateur',
+      time: s.time === 'utc' ? 'utc' : 'local',
     };
   }
 
@@ -63,7 +64,15 @@
 
   const pad = n => String(n).padStart(2, '0');
   const utcHM = d => `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
-  const localHM = d => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  // Times follow the Time setting: this device's local time (12- or 24-hour,
+  // as the device prefers), or UTC in 24-hour form marked Z, the way hams log.
+  const useUtc = () => station().time === 'utc';
+  const clockHM = d => (useUtc() ? `${utcHM(d)}Z` : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+  const clockHour = t => (useUtc() ? `${pad(new Date(t).getUTCHours())}Z` : new Date(t).toLocaleTimeString([], { hour: 'numeric' }));
+  const clockDayHour = t => {
+    const d = new Date(t);
+    return useUtc() ? `${d.toLocaleDateString([], { weekday: 'short', timeZone: 'UTC' })} ${pad(d.getUTCHours())}Z` : d.toLocaleString([], { weekday: 'short', hour: 'numeric' });
+  };
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const utcDay = d => `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`;
   const ago = t => {
@@ -273,12 +282,12 @@
     const morning = rise && (!set || rise.t < set.t);
     const grayEnd = morning ? rise : next('dusk');
     if (alt < -0.833 && alt > -6 && grayEnd) {
-      parts.push(`<b>Gray line now</b> until about ${esc(localHM(new Date(grayEnd.t)))}: a good time for low-band DX along the day/night line.`);
+      parts.push(`<b>Gray line now</b> until about ${esc(clockHM(new Date(grayEnd.t)))}: a good time for low-band DX along the day/night line.`);
     }
     if (!morning) {
-      parts.push(`<b>Sunset ${esc(localHM(new Date(set.t)))}</b> (in ${inTime(set.t - now)}). After dark the MUF usually falls: 17–10 m tend to close within a couple of hours, and 80 m and 160 m open up for DX.`);
+      parts.push(`<b>Sunset ${esc(clockHM(new Date(set.t)))}</b> (in ${inTime(set.t - now)}). After dark the MUF usually falls: 17–10 m tend to close within a couple of hours, and 80 m and 160 m open up for DX.`);
     } else {
-      parts.push(`<b>Sunrise ${esc(localHM(new Date(rise.t)))}</b> (in ${inTime(rise.t - now)}). After sunrise the MUF climbs and 20 m and up open, first toward the east, while daytime absorption fades 160 m and 80 m within an hour or so.`);
+      parts.push(`<b>Sunrise ${esc(clockHM(new Date(rise.t)))}</b> (in ${inTime(rise.t - now)}). After sunrise the MUF climbs and 20 m and up open, first toward the east, while daytime absorption fades 160 m and 80 m within an hour or so.`);
     }
     el.innerHTML = parts.join(' ');
     el.hidden = false;
@@ -303,7 +312,7 @@
     } else {
       lines.push('Nothing decoded nearby: closed, or nobody close is listening');
     }
-    if (b.openSince) lines.push(`Open since ${localHM(new Date(b.openSince))}`);
+    if (b.openSince) lines.push(`Open since ${clockHM(new Date(b.openSince))}`);
     return `<div class="tile" style="--c:var(${info.series})">
       <span class="label"><span class="sw"></span>${info.label} <span class="meta">${info.mhz}</span></span>
       <span class="value">${pill(cls, label)}</span>
@@ -574,6 +583,7 @@
     const start = BASEMAPS.some(b => b[0] === saved) ? saved : matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'streets';
     bases[BASEMAPS.find(b => b[0] === start)[1]].addTo(map);
     el.classList.toggle('map-plain', start === 'plain');
+    if (start === 'plain') ensureLand();
 
     const m = { key, map, plain, group: L.layerGroup().addTo(map), labels: [], fitKey: null };
     const overlays = {};
@@ -587,6 +597,7 @@
       const id = idOf.get(e.layer);
       storeSet(`hamdash.layer.${key}`, id);
       el.classList.toggle('map-plain', id === 'plain');
+      if (id === 'plain') ensureLand();
     });
     if (opts.home) new HomeControl({ onClick: opts.home }).addTo(map);
     map.on('zoomend moveend', () => declutter(m));
@@ -625,12 +636,15 @@
 
   // A shape that isn't a circle: 'tri' (ionosonde), 'diamond' (object), or an
   // arrow rotated to a course.
-  function shapeMarker(p, shape, color, course) {
+  // label names the marker for screen readers (Leaflet makes it a button).
+  function shapeMarker(p, shape, color, course, label) {
     const html = shape === 'arrow'
       ? `<span class="map-arrow" style="--c:${color};transform:rotate(${Math.round(course)}deg)"></span>`
       : `<span class="map-${shape}" style="--c:${color}"></span>`;
     // The icon box is larger than the shape so it's as easy to click as a dot.
-    return L.marker(ll(p), { icon: L.divIcon({ className: 'map-shape', html, iconSize: [26, 26], iconAnchor: [13, 13] }) });
+    const m = L.marker(ll(p), { icon: L.divIcon({ className: 'map-shape', html, iconSize: [26, 26], iconAnchor: [13, 13] }) });
+    if (label) m.on('add', () => m.getElement()?.setAttribute('aria-label', label));
+    return m;
   }
 
   function highlightRing(p) {
@@ -711,7 +725,7 @@
         .addTo(m.group);
     }
     if (iono) {
-      shapeMarker(iono, 'tri', css('--series-1'))
+      shapeMarker(iono, 'tri', css('--series-1'), 0, `${iono.name} ionosonde`)
         .bindTooltip(`<b>${esc(iono.name)}</b> ionosonde${tipRow('MUF(3000)', `${iono.mufd.toFixed(1)} MHz`)}${tipRow('foF2', `${iono.fof2?.toFixed(1) ?? '—'} MHz`)}${tipRow('Measured', ago(iono.time))}`, TIP)
         .addTo(m.group);
     }
@@ -733,7 +747,7 @@
     if (!pos) { $('#sunTimes').innerHTML = '<div class="empty">Set your grid square to see sunrise, sunset and gray line times.</div>'; return; }
     const t = sunTimes(pos);
     const alt = sunAltitude(sun, pos.lat, pos.lon);
-    const both = d => (d ? `${localHM(d)}` : '—');
+    const both = d => (d ? `${clockHM(d)}` : '—');
     const sub = d => (d ? `${utcHM(d)} UTC` : 'n/a today');
     $('#sunTimes').innerHTML = [
       tile('Sun at QTH', sunPhase(alt), '', `Elevation ${alt.toFixed(1)}°`),
@@ -811,7 +825,12 @@
     const W = Math.max(300, box.clientWidth), H = 210;
     const m = { l: 26, r: 8, t: 10, b: 24 };
     const iw = W - m.l - m.r, ih = H - m.t - m.b;
-    const s = svg('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Planetary K-index bar chart' }, box);
+    // Screen readers get the numbers, not just the chart's name.
+    const nowMs = Date.now();
+    const past = data.filter(k => k.kind !== 'predicted' && Date.parse(k.time) <= nowMs);
+    const ahead = data.filter(k => Date.parse(k.time) > nowMs);
+    const kpLabel = `Planetary K-index, past 4 days and forecast. Latest ${past.length ? past[past.length - 1].kp.toFixed(1) : 'unknown'}, highest in the past 4 days ${past.length ? Math.max(...past.map(k => k.kp)).toFixed(1) : 'unknown'}${ahead.length ? `, forecast high ${Math.max(...ahead.map(k => k.kp)).toFixed(1)}` : ''}.`;
+    const s = svg('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': kpLabel }, box);
     const y = v => m.t + ih - (v / 9) * ih;
     const step = iw / data.length;
     const bw = Math.max(1.5, step - 2);
@@ -881,7 +900,12 @@
     const iw = W - m.l - m.r, ih = H - m.t - m.b;
     const X = t => m.l + ((t - x0) / (x1 - x0)) * iw;
     const Y = v => m.t + ih - (v / ymax) * ih;
-    const s = svg('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Monthly sunspot number since 2008 with NOAA prediction' }, box);
+    const lastObs = [...obs].reverse().find(d => d.ssn != null);
+    // NOAA's series overlaps the observed months, so only use what's ahead.
+    const ahead = pred.filter(d => d.ssn != null && (!lastObs || d.x > lastObs.x));
+    const first = ahead[0], last = ahead[ahead.length - 1];
+    const cycleLabel = `Monthly sunspot number since 2008 with the NOAA prediction. Latest ${lastObs ? `${Math.round(lastObs.ssn)} (${lastObs.t})` : 'unknown'}${first ? `; NOAA predicts ${Math.round(first.ssn)} for ${first.t}${last !== first ? ` and ${Math.round(last.ssn)} by ${last.t}` : ''}` : ''}.`;
+    const s = svg('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': cycleLabel }, box);
     const ax = svg('g', { class: 'axis' }, s);
     for (let v = 0; v <= ymax; v += ymax > 200 ? 100 : 50) {
       svg('line', { class: 'gridline', x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v) }, s);
@@ -1099,7 +1123,7 @@
         : `<div class="tile"><span class="label">Next 12 hours · thunder ${hours.some(h => /thunder/i.test(h.forecast)) ? 'in forecast' : 'not expected'}</span>
             <div class="hour-strip">${hours.map(h => {
               const t = /thunder/i.test(h.forecast);
-              return `<span class="hour${t ? ' thunder' : ''}" title="${esc(h.forecast)}${h.pop != null ? ` · ${h.pop}% rain` : ''}">${esc(new Date(h.start).toLocaleTimeString([], { hour: 'numeric' }))}${t ? ' ⚡' : ''}</span>`;
+              return `<span class="hour${t ? ' thunder' : ''}" title="${esc(h.forecast)}${h.pop != null ? ` · ${h.pop}% rain` : ''}">${esc(clockHour(h.start))}${t ? ' ⚡' : ''}</span>`;
             }).join('')}</div></div>`;
 
     const alerts = s.nws?.alerts || [];
@@ -1112,14 +1136,16 @@
 
   // ------------------------------------------------------------ views
 
-  const VIEWS = ['weather', 'prop', 'repeaters', 'aprs', 'pota', 'sats', 'lookup'];
+  const VIEWS = ['weather', 'prop', 'repeaters', 'aprs', 'pota', 'sats', 'lookup', 'ref'];
   let currentView = 'weather';
 
   function showView(name) {
     if (!VIEWS.includes(name) || (state.settings.hiddenTabs || []).includes(name)) name = 'weather';
     currentView = name;
     for (const v of VIEWS) $(`#view-${v}`).hidden = v !== name;
-    for (const b of document.querySelectorAll('#viewTabs [data-view]')) b.setAttribute('aria-selected', b.dataset.view === name);
+    for (const b of document.querySelectorAll('#viewTabs [data-view]')) {
+      if (b.dataset.view === name) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+    }
     // On phones the tab row scrolls sideways; keep the active tab visible.
     const tab = $(`#viewTabs [data-view="${name}"]`), row = $('#viewTabs');
     if (row.scrollWidth > row.clientWidth) row.scrollLeft = tab.offsetLeft - (row.clientWidth - tab.offsetWidth) / 2;
@@ -1130,13 +1156,17 @@
     if (name === 'repeaters') loadRepeaters();
     if (name === 'lookup') renderLookup();
     if (name === 'prop') openProp();
+    if (name === 'ref') openRef();
     // Poll live data only while its tab is open.
-    for (const v of [aprs, pota, sats, prop]) clearInterval(v.timer);
+    for (const v of [aprs, pota, sats, prop, beacons]) clearInterval(v.timer);
     if (name === 'aprs') { loadAprs(); aprs.timer = setInterval(loadAprs, 15000); }
     if (name === 'pota') { loadPota(); pota.timer = setInterval(loadPota, 60000); }
     if (name === 'sats') { loadSats(); sats.timer = setInterval(loadSats, 30000); }
     // Path ratings change slowly; refresh every 10 minutes while the tab is open.
-    if (name === 'prop') prop.timer = setInterval(() => { if (prop.query) analyzePath(prop.query, { quiet: true }); }, 10 * 60000);
+    if (name === 'prop') {
+      prop.timer = setInterval(() => { if (prop.query) analyzePath(prop.query, { quiet: true }); }, 10 * 60000);
+      beacons.timer = setInterval(tickBeacons, 1000);
+    }
   }
 
   // Canvases and charts can only be sized while their view is visible.
@@ -1508,8 +1538,8 @@
       const c = aprsColor(st.cat);
       const key = `${st.kind}:${st.name}`;
       const moving = st.speed > 3 && st.course !== undefined;
-      const marker = st.cat === 'object' ? shapeMarker(st, 'diamond', c)
-        : moving ? shapeMarker(st, 'arrow', c, st.course)
+      const marker = st.cat === 'object' ? shapeMarker(st, 'diamond', c, 0, `APRS object ${st.name}`)
+        : moving ? shapeMarker(st, 'arrow', c, st.course, `APRS station ${st.name}, moving`)
           : dot(st, c);
       const via = st.path?.digis?.length ? `via ${st.path.digis.join(', ')}` : st.path?.internet ? 'via internet' : 'direct to iGate';
       marker.bindTooltip(`<b class="mono">${esc(st.name)}</b> <span class="k">${esc(st.kind === 'station' ? symbolName(st) : st.kind)}</span>` +
@@ -1707,7 +1737,7 @@
         const aos = new Date(p.aos), up = Date.parse(p.aos) <= now;
         return `<tr class="pass-row${passKey(s, p) === sats.selected ? ' selected' : ''}" data-pass="${esc(passKey(s, p))}" tabindex="0">
           <td><span class="mono call-plain">${esc(s.name)}</span><div class="sub">${esc(s.type)} · ${esc(s.mode)}</div></td>
-          <td class="mono">${localHM(aos)}<div class="sub">${up ? pill('good', 'Up now') : esc(untilText(aos - now))}</div></td>
+          <td class="mono">${clockHM(aos)}<div class="sub">${up ? pill('good', 'Up now') : esc(untilText(aos - now))}</div></td>
           <td class="mono num">${Math.round(p.maxEl)}°<div class="el-bar"><span style="width:${Math.min(100, (p.maxEl / 90) * 100)}%"></span></div></td>
           <td class="mono">${compass(p.aosAz)} → ${compass(p.losAz)}<div class="sub">${Math.round(p.durationMin)} min</div></td>
         </tr>`;
@@ -1723,7 +1753,7 @@
     const box = $('#passDetail');
     if (!sel) { box.innerHTML = '<div class="empty">Select a pass to see its sky track and Doppler-corrected frequencies.</div>'; $('#skyMeta').textContent = ''; return; }
     const { s, p } = sel;
-    $('#skyMeta').textContent = `${s.name} · ${localHM(new Date(p.aos))}`;
+    $('#skyMeta').textContent = `${s.name} · ${clockHM(new Date(p.aos))}`;
     const rr = p.rangeRate;
     const freqRow = (label, f, up) => {
       if (f === undefined) return '';
@@ -1735,9 +1765,9 @@
     };
     box.innerHTML = `
       <div class="sun-times">
-        ${tile('Rise (AOS)', localHM(new Date(p.aos)), '', `${utcHM(new Date(p.aos))} UTC · ${Math.round(p.aosAz)}° ${compass(p.aosAz)}`)}
-        ${tile('Highest (TCA)', `${Math.round(p.maxEl)}°`, '', `${localHM(new Date(p.tca))}`)}
-        ${tile('Set (LOS)', localHM(new Date(p.los)), '', `${utcHM(new Date(p.los))} UTC · ${Math.round(p.losAz)}° ${compass(p.losAz)}`)}
+        ${tile('Rise (AOS)', clockHM(new Date(p.aos)), '', `${utcHM(new Date(p.aos))} UTC · ${Math.round(p.aosAz)}° ${compass(p.aosAz)}`)}
+        ${tile('Highest (TCA)', `${Math.round(p.maxEl)}°`, '', `${clockHM(new Date(p.tca))}`)}
+        ${tile('Set (LOS)', clockHM(new Date(p.los)), '', `${utcHM(new Date(p.los))} UTC · ${Math.round(p.losAz)}° ${compass(p.losAz)}`)}
       </div>
       <table class="mini-table doppler">
         <thead><tr><th>Doppler</th><th>AOS</th><th>TCA</th><th>LOS</th></tr></thead>
@@ -1796,9 +1826,9 @@
       dots.push({ x, y, html });
     };
     const tcaPt = p.track.reduce((b, t) => (t[1] > b[1] ? t : b));
-    mark(p.track[0][0], p.track[0][1], `AOS ${localHM(new Date(p.aos))}`, `<b>Rise</b>${tipRow('Time', localHM(new Date(p.aos)))}${tipRow('Azimuth', `${Math.round(p.aosAz)}°`)}`);
-    mark(tcaPt[0], tcaPt[1], `${Math.round(p.maxEl)}°`, `<b>Highest</b>${tipRow('Time', localHM(new Date(p.tca)))}${tipRow('Elevation', `${Math.round(p.maxEl)}°`)}${tipRow('Azimuth', `${Math.round(tcaPt[0])}°`)}`);
-    mark(p.losAz, 0, `LOS ${localHM(new Date(p.los))}`, `<b>Set</b>${tipRow('Time', localHM(new Date(p.los)))}${tipRow('Azimuth', `${Math.round(p.losAz)}°`)}`);
+    mark(p.track[0][0], p.track[0][1], `AOS ${clockHM(new Date(p.aos))}`, `<b>Rise</b>${tipRow('Time', clockHM(new Date(p.aos)))}${tipRow('Azimuth', `${Math.round(p.aosAz)}°`)}`);
+    mark(tcaPt[0], tcaPt[1], `${Math.round(p.maxEl)}°`, `<b>Highest</b>${tipRow('Time', clockHM(new Date(p.tca)))}${tipRow('Elevation', `${Math.round(p.maxEl)}°`)}${tipRow('Azimuth', `${Math.round(tcaPt[0])}°`)}`);
+    mark(p.losAz, 0, `LOS ${clockHM(new Date(p.los))}`, `<b>Set</b>${tipRow('Time', clockHM(new Date(p.los)))}${tipRow('Azimuth', `${Math.round(p.losAz)}°`)}`);
 
     const now = sats.data?.now?.[s.id];
     if (now && now.el > 0 && Date.parse(p.aos) <= Date.now()) {
@@ -1979,7 +2009,11 @@
     storeSet('hamdash.propTarget', JSON.stringify(q));
     if (!quiet) { prop.loading = true; prop.error = null; renderProp(); }
     const params = new URLSearchParams({ lat: pos.lat.toFixed(4), lon: pos.lon.toFixed(4) });
-    if (q.tlat != null) { params.set('tlat', q.tlat.toFixed(4)); params.set('tlon', q.tlon.toFixed(4)); } else params.set('target', q.target);
+    if (q.tlat != null) {
+      params.set('tlat', q.tlat.toFixed(4)); params.set('tlon', q.tlon.toFixed(4));
+      if (q.label) params.set('tlabel', q.label);
+      if (q.place) params.set('tplace', q.place);
+    } else params.set('target', q.target);
     // Only the latest request may update the page.
     const seq = prop.seq = (prop.seq || 0) + 1;
     return api(`api/path?${params}`)
@@ -2024,7 +2058,6 @@
     renderProp();
   }
 
-  const localHour = t => new Date(t).toLocaleTimeString([], { hour: 'numeric' });
 
   function propPill(x) {
     if (!x) return pill('none', 'n/a');
@@ -2043,7 +2076,7 @@
   function windowsText(summary) {
     const runs = PROP_BANDS.flatMap(b => (summary.windows[b] || []).map(w => ({ b, ...w }))).slice(0, 5);
     if (!runs.length) return 'No band is rated good on this path in the next 24 hours.';
-    const span = w => `${localHour(w.start)}–${localHour(Date.parse(w.end) + 3600_000)}`;
+    const span = w => `${clockHour(w.start)}–${clockHour(Date.parse(w.end) + 3600_000)}`;
     return `<b>Good windows:</b> ${runs.map(w => `${esc(w.b)} ${span(w)}`).join(' · ')}`;
   }
 
@@ -2088,7 +2121,7 @@
       `“Heard” is measured: PSKReporter decodes (mostly FT8) between stations near you and near the target, ↓ toward you and ↑ from your area.`,
       !m.directions.toYou && !m.directions.fromYou
         ? 'PSKReporter data isn’t available right now (it may be asking the app to slow down; see Data sources in settings), so “Heard” is empty.'
-        : m.waitUntil ? `The ↑ direction needs its own PSKReporter query, limited to one new area every 5 minutes; it fills in after ${localHM(new Date(m.waitUntil))}.` : '',
+        : m.waitUntil ? `The ↑ direction needs its own PSKReporter query, limited to one new area every 5 minutes; it fills in after ${clockHM(new Date(m.waitUntil))}.` : '',
       heardAny || (!m.directions.toYou && !m.directions.fromYou) ? '' : 'Nothing heard doesn’t mean closed: nobody may be on.',
     ].filter(Boolean).join(' ');
 
@@ -2098,17 +2131,17 @@
     $('#propWindows').innerHTML = windowsText(side.summary);
     const hours = side.hours;
     const head = hours.map((h, i) => {
-      const dt = new Date(h.t), lab = dt.getHours() % 3 === 0 || i === 0 ? localHour(h.t) : '';
-      return `<th scope="col" title="${esc(dt.toLocaleString([], { weekday: 'short', hour: 'numeric' }))}">${esc(lab)}</th>`;
+      const dt = new Date(h.t), hr = useUtc() ? dt.getUTCHours() : dt.getHours(), lab = hr % 3 === 0 || i === 0 ? clockHour(h.t) : '';
+      return `<th scope="col" title="${esc(clockDayHour(h.t))}">${esc(lab)}</th>`;
     }).join('');
     const rows = PROP_BANDS.map(b => `<tr><th scope="row" class="band">${b}</th>${hours.map(h => {
       const r = h.bands[b];
-      return `<td class="r-${r}" title="${esc(`${b} · ${new Date(h.t).toLocaleString([], { weekday: 'short', hour: 'numeric' })}: ${RATING_LABEL[r]} (MUF ${h.muf} MHz)`)}"><span class="sr-only">${RATING_LABEL[r]}</span></td>`;
+      return `<td class="r-${r}" title="${esc(`${b} · ${clockDayHour(h.t)}: ${RATING_LABEL[r]} (MUF ${h.muf} MHz)`)}"><span class="sr-only">${RATING_LABEL[r]}</span></td>`;
     }).join('')}</tr>`).join('');
     const muf = `<tr class="muf"><th scope="row">MUF</th>${hours.map((h, i) => `<td>${i % 3 === 0 ? Math.round(h.muf) : ''}</td>`).join('')}</tr>`;
     $('#propGrid').innerHTML = `<thead><tr><th></th>${head}</tr></thead><tbody>${rows}${muf}</tbody>`;
     $('#propGridLegend').innerHTML = ['good', 'fair', 'poor', 'closed'].map(r => legendKey('', RATING_LABEL[r]).replace('<span class="sw" style="">', `<span class="sw r-${r}">`)).join('');
-    $('#propDayNote').textContent = `${prop.side === 'long' ? `Long path: ${fmtDist(l.km)} at ${Math.round(l.bearing)}°. ` : ''}Hours in your local time. A model outlook: it follows the sun along the path at today’s sunspot level with Kp held at its current value, and leans on the live ionosondes for the first few hours. It can’t foresee flares or storms.`;
+    $('#propDayNote').textContent = `${prop.side === 'long' ? `Long path: ${fmtDist(l.km)} at ${Math.round(l.bearing)}°. ` : ''}${useUtc() ? 'Hours in UTC' : 'Hours in your local time'}. A model outlook: it follows the sun along the path at today’s sunspot level with Kp held at its current value, and leans on the live ionosondes for the first few hours. It can’t foresee flares or storms.`;
   }
 
   // Points from p along a bearing for km (for the long path, which the
@@ -2175,7 +2208,7 @@
         return { ...p, lon };
       };
       for (const r of d.short.now.reflections) {
-        shapeMarker(onLine(r), 'diamond', css('--series-3'))
+        shapeMarker(onLine(r), 'diamond', css('--series-3'), 0, `Path control point, MUF ${r.muf.toFixed(1)} MHz`)
           .bindTooltip(`<b>Control point</b>${tipRow('foF2', `${r.fof2.toFixed(1)} MHz`)}${tipRow('Hop MUF', `${r.muf.toFixed(1)} MHz`)}${tipRow('Sun', sunPhase(r.sunAlt))}${r.station ? tipRow('Anchored to', `${esc(r.station)} (${fmtDist(r.stationKm)})`) : tipRow('Anchored to', 'global ionosonde average')}`, TIP)
           .addTo(m.group);
       }
@@ -2206,7 +2239,7 @@
       if (un) return removePath(un.dataset.unsave);
       const b = e.target.closest('[data-saved]');
       const p = b && prop.saved.find(x => x.id === b.dataset.saved);
-      if (p) { $('#propInput').value = p.target || p.grid; analyzePath({ tlat: p.lat, tlon: p.lon }); }
+      if (p) { $('#propInput').value = p.target || p.grid; analyzePath({ tlat: p.lat, tlon: p.lon, label: p.target || p.grid, place: p.place }); }
     });
     $('#propPathTabs').addEventListener('click', e => {
       const b = e.target.closest('[data-path]');
@@ -2216,9 +2249,79 @@
       const b = e.target.closest('[data-path-target]');
       if (b) analyzeTarget(b.dataset.pathTarget);
     });
+    $('#beaconTable').addEventListener('click', e => {
+      const b = e.target.closest('[data-beacon]');
+      const bc = b && REF.BEACONS[+b.dataset.beacon];
+      if (!bc) return;
+      $('#propInput').value = bc.call;
+      analyzePath({ tlat: bc.lat, tlon: bc.lon, label: bc.call, place: bc.place });
+      $('#h-propnow').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+    });
+  }
+
+  // ------------------------------------------------------------ NCDXF/IARU beacons
+
+  const beacons = { data: null, error: null, loadedAt: 0, key: '', timer: null };
+
+  async function loadBeacons() {
+    const pos = gridToLatLon(station().grid);
+    if (!pos) { beacons.data = null; renderBeacons(); return; }
+    beacons.key = station().grid;
+    beacons.loadedAt = Date.now();
+    try { beacons.data = await api(`api/beacons?lat=${pos.lat.toFixed(4)}&lon=${pos.lon.toFixed(4)}`); beacons.error = null; } catch (e) { beacons.error = e.message; }
+    renderBeacons();
+  }
+
+  const beaconRating = (i, band) => beacons.data?.beacons[i]?.bands[band];
+
+  function renderBeacons() {
+    const pos = gridToLatLon(station().grid);
+    if (!pos) {
+      $('#beaconTable').innerHTML = '<tbody><tr><td class="empty">Set your grid square to rate the paths to the beacons.</td></tr></tbody>';
+      $('#beaconNow').innerHTML = '';
+      return;
+    }
+    $('#beaconMeta').textContent = beacons.error ? beacons.error : beacons.data ? `Ratings from ${ago(beacons.data.computed)}` : 'Loading…';
+    const bands = REF.BEACON_BANDS;
+    $('#beaconTable').innerHTML = `<thead><tr><th>Beacon</th><th class="hide-sm">Location</th><th class="num">Distance</th>${
+      bands.map(([band, mhz]) => `<th>${band}<small>${mhz.toFixed(3)}</small></th>`).join('')}</tr></thead><tbody>${
+      REF.BEACONS.map((b, i) => {
+        const d = beacons.data?.beacons[i];
+        return `<tr><td><button type="button" class="call-link mono" data-beacon="${i}" title="Analyze the path to ${esc(b.call)}">${esc(b.call)}</button><div class="sub show-sm">${esc(b.place)}</div></td>
+          <td class="hide-sm">${esc(b.place)}</td>
+          <td class="num">${d ? `${fmtDist(d.km)}<div class="sub">${d.bearing}° ${compass(d.bearing)}</div>` : '—'}</td>
+          ${bands.map(([band]) => `<td data-b="${i}" data-band="${band}">${beaconRating(i, band) ? ratingPill(beaconRating(i, band)) : '<span class="meta">—</span>'}</td>`).join('')}</tr>`;
+      }).join('')}</tbody>`;
+    tickBeacons(true);
+  }
+
+  // Once a second: who's on the air now on each band, and the countdown.
+  function tickBeacons(force = false) {
+    if (currentView !== 'prop' && !force) return;
+    if (gridToLatLon(station().grid) && (beacons.key !== station().grid || Date.now() - beacons.loadedAt > 5 * 60000)) { loadBeacons(); return; }
+    const s = REF.beaconSchedule(Date.now());
+    const sig = s.bands.map(b => b.now).join();
+    if (force || beacons.sig !== sig) {
+      beacons.sig = sig;
+      for (const el of document.querySelectorAll('#beaconTable td.on-air')) el.classList.remove('on-air');
+      for (const b of s.bands) document.querySelector(`#beaconTable td[data-b="${b.now}"][data-band="${b.band}"]`)?.classList.add('on-air');
+      $('#beaconNow').innerHTML = s.bands.map(b => {
+        const on = REF.BEACONS[b.now], r = beaconRating(b.now, b.band);
+        return `<div class="tile beacon-tile">
+          <span class="label">${b.band} <span class="meta">${b.mhz.toFixed(3)} MHz</span></span>
+          <span class="value mono">${esc(on.call)}</span>
+          <span class="sub">${esc(on.place)}</span>
+          <span class="beacon-rating">${r ? ratingPill(r) : ''}</span>
+          <span class="sub">Next <span class="mono">${esc(REF.BEACONS[b.next].call)}</span> in <span class="beacon-left">${s.remaining}</span> s</span>
+        </div>`;
+      }).join('');
+    } else {
+      for (const el of document.querySelectorAll('#beaconNow .beacon-left')) el.textContent = s.remaining;
+    }
   }
 
   function openProp() {
+    if (!beacons.data || beacons.key !== station().grid) loadBeacons(); else renderBeacons();
     if (!prop.query) {
       try {
         const q = JSON.parse(storeGet('hamdash.propTarget'));
@@ -2228,7 +2331,87 @@
     renderProp();
   }
 
-  const TAB_NAMES = [['weather', 'Space weather'], ['prop', 'Propagation'], ['repeaters', 'Repeaters'], ['aprs', 'APRS'], ['pota', 'POTA'], ['sats', 'Satellites'], ['lookup', 'Callsign lookup']];
+  // ------------------------------------------------------------ reference (band plan, GMRS/FRS, MURS, CB)
+
+  const REF = window.HamReference;
+  const MODE_COLOR = { cw: '--series-1', phone: '--series-2', all: '--series-3', cwonly: '--series-1', channel: '--series-2' };
+  const ref = { cls: storeGet('hamdash.licenseClass') || null, rendered: false, guessed: false };
+
+  // The station's license class from its FCC/QRZ record, used until a class is picked.
+  async function guessLicenseClass() {
+    if (ref.cls || ref.guessed || station().type !== 'amateur' || !station().callsign) return;
+    ref.guessed = true;
+    try {
+      const r = await api(`api/lookup?call=${encodeURIComponent(station().callsign)}`);
+      const c = String(r.class || '').toUpperCase();
+      const cls = { E: 'E', EXTRA: 'E', A: 'A', ADVANCED: 'A', G: 'G', GENERAL: 'G', T: 'T', TECHNICIAN: 'T', P: 'T' }[c];
+      if (cls && !ref.cls) { ref.cls = cls; ref.fromLicense = true; renderRef(); }
+    } catch { /* no record: General stays the default */ }
+  }
+
+  const mhzText = f => (f >= 100 ? f.toFixed(1) : f < 10 ? f.toFixed(4).replace(/0$/, '') : f.toFixed(3));
+
+  function renderRef() {
+    const cls = ref.cls || 'G';
+    $('#refClassTabs').innerHTML = REF.LICENSE_CLASSES.map(([k, label]) =>
+      `<button type="button" role="tab" data-cls="${k}" aria-selected="${k === cls}">${esc(label)}</button>`).join('');
+    $('#refClassNote').textContent = ref.fromLicense && !storeGet('hamdash.licenseClass')
+      ? `Showing ${REF.LICENSE_CLASSES.find(c => c[0] === cls)[1]} privileges, from the FCC record for ${station().callsign}. Pick another class above to compare.`
+      : 'Pick a license class to see where it can transmit. Bars are to scale within each band.';
+    $('#refBands').innerHTML = REF.US_BAND_PLAN.map(e => {
+      const priv = REF.privileges(e, cls);
+      const span = e.hi - e.lo || 1;
+      const bar = e.channels
+        ? e.channels.map(f => `<span class="bp-chan${priv.length ? '' : ' off'}" style="left:${((f - e.lo) / span) * 96 + 2}%;--c:var(${MODE_COLOR.channel})" title="${mhzText(f)} MHz"></span>`).join('')
+        : priv.map(([lo, hi, mode]) => `<span class="bp-seg" style="left:${((lo - e.lo) / span) * 100}%;width:${((hi - lo) / span) * 100}%;--c:var(${MODE_COLOR[mode]})" title="${mhzText(lo)}–${mhzText(hi)} MHz: ${esc(REF.MODE_LABEL[mode])}"></span>`).join('');
+      const text = !priv.length ? '<span class="meta">No privileges</span>'
+        : e.channels ? `Channels ${e.channels.map(f => f.toFixed(4)).join(', ')} MHz`
+          : priv.map(([lo, hi, mode]) => `<span class="nowrap"><span class="mono">${mhzText(lo)}–${mhzText(hi)}</span> ${esc(REF.MODE_LABEL[mode])}</span>`).join(' · ');
+      const note = e.note?.[cls] || e.note?.all || '';
+      return `<div class="bp-row${priv.length ? '' : ' none'}">
+        <div class="bp-band mono">${e.band}</div>
+        <div class="bp-main">
+          <div class="bp-bar" role="img" aria-label="${esc(`${e.band}: ${priv.length ? priv.map(([lo, hi, mode]) => mode === 'channel' ? `${mhzText(lo)} MHz` : `${mhzText(lo)} to ${mhzText(hi)} MHz ${REF.MODE_LABEL[mode]}`).join(', ') : 'no privileges'}`)}">${bar}</div>
+          <div class="bp-text">${text}${note ? `<div class="sub">${esc(note)}</div>` : ''}</div>
+        </div>
+      </div>`;
+    }).join('');
+    $('#refLegend').innerHTML = [['cw', 'CW, RTTY, data'], ['phone', 'Phone, image, CW'], ['all', 'All modes']]
+      .map(([m, label]) => legendKey(`background:var(${MODE_COLOR[m]})`, label)).join('');
+
+    $('#refGmrsTable').innerHTML = `<thead><tr><th class="num">Ch</th><th class="num">MHz</th><th>GMRS</th><th>FRS</th><th>Notes</th></tr></thead><tbody>${
+      REF.GMRS_FRS.map(c => `<tr><td class="num mono">${c.n}</td><td class="num mono">${c.mhz.toFixed(4)}</td><td>${c.gmrs}</td><td>${c.frs}</td><td class="comment">${esc(c.note)}</td></tr>`).join('')
+    }</tbody>`;
+    $('#refMursTable').innerHTML = `<thead><tr><th class="num">Ch</th><th class="num">MHz</th><th>Notes</th></tr></thead><tbody>${
+      REF.MURS.map(c => `<tr><td class="num mono">${c.n}</td><td class="num mono">${c.mhz.toFixed(3)}</td><td class="comment">${esc(c.note)}</td></tr>`).join('')
+    }</tbody>`;
+    // CB in two columns (1-20, 21-40) to keep the card short.
+    const cbCell = c => c ? `<td class="num mono${c.note ? ' strong' : ''}"${c.note ? ` title="${esc(c.note)}"` : ''}>${c.n}</td><td class="num mono">${c.mhz.toFixed(3)}</td>` : '<td></td><td></td>';
+    $('#refCbTable').innerHTML = `<thead><tr><th class="num">Ch</th><th class="num">MHz</th><th class="num">Ch</th><th class="num">MHz</th></tr></thead><tbody>${
+      REF.CB.slice(0, 20).map((c, i) => `<tr>${cbCell(c)}${cbCell(REF.CB[i + 20])}</tr>`).join('')
+    }</tbody>`;
+    // GMRS stations see their channels first.
+    const grid = $('#view-ref');
+    if (station().type === 'gmrs' && grid.firstElementChild !== $('#refGmrs')) grid.prepend($('#refGmrs'));
+    ref.rendered = true;
+  }
+
+  function openRef() {
+    renderRef();
+    guessLicenseClass();
+  }
+
+  function bindRef() {
+    $('#refClassTabs').addEventListener('click', e => {
+      const b = e.target.closest('[data-cls]');
+      if (!b) return;
+      ref.cls = b.dataset.cls;
+      storeSet('hamdash.licenseClass', ref.cls);
+      renderRef();
+    });
+  }
+
+  const TAB_NAMES = [['weather', 'Space weather'], ['prop', 'Propagation'], ['repeaters', 'Repeaters'], ['aprs', 'APRS'], ['pota', 'POTA'], ['sats', 'Satellites'], ['lookup', 'Callsign lookup'], ['ref', 'Reference']];
 
   // Per-browser: hide tabs someone doesn't use (Space weather always stays).
   function applyTabVisibility() {
@@ -2482,17 +2665,19 @@
 
   // [view, element to highlight, title, text]. Steps on hidden tabs are skipped.
   const TOUR_STEPS = [
-    ['weather', '#viewTabs', 'Seven views', 'Space weather, propagation paths, repeaters, APRS, POTA, satellite passes and callsign lookup. Hide the ones you don’t use in settings (⚙ at the top right).'],
+    ['weather', '#viewTabs', 'Eight views', 'Space weather, propagation paths, repeaters, APRS, POTA, satellite passes, callsign lookup and a reference tab. Hide the ones you don’t use in settings (⚙ at the top right).'],
     ['weather', '#tiles', 'Conditions right now', 'Solar flux, sunspots, the K-index and more. Higher solar flux generally means better high-band (20–10 m) conditions; a high K-index means a disturbed, noisy ionosphere.'],
     ['weather', '#bandsTable', 'Which bands are open', '“At your QTH” is an estimate from the nearest ionosonde. “Heard nearby” is measured: stations actually decoded near you in the last 15 minutes.'],
     ['weather', '#stormStatus', 'Storm safety', 'Safe, Caution or Danger for your station, from National Weather Service alerts and an optional lightning sensor. Danger also shows a red banner on every tab.'],
     ['weather', '#panel-grayline', 'Maps', 'Click a map, then scroll to zoom, or pinch on a phone. The layers button switches between Dark, Streets, Satellite and Topo. The golden band is the gray line, where low-band DX is often best.'],
     ['prop', '#propForm', 'Propagation to anywhere', 'Enter a callsign, grid or prefix, or click the map, to see how each band should work to it now and over the next 24 hours, with PSKReporter showing what’s actually getting through. Save paths you care about to get Home Assistant sensors for them.'],
+    ['prop', '#beaconCard', 'Beacons', 'Eighteen NCDXF beacons take turns on 20 to 10 m. This shows which one is on the air on each band right now and how your path to it rates, so a quick listen tells you if a band is open.'],
     ['repeaters', '#rptMap', 'Repeaters near you', 'Click a dot to find it in the list, with frequency, offset and tone. Confirm details before you transmit, since listings can be out of date.'],
     ['aprs', '#aprsMap', 'Live APRS', 'Stations heard around you right now: mobiles show as arrows with their tracks, plus digipeaters, iGates and weather stations. This is receive-only.'],
     ['sats', '#passTable', 'Satellite passes', 'Upcoming passes over you. Pick one to see its sky track and Doppler-corrected frequencies.'],
     ['lookup', '#lookupForm', 'Callsign lookup', 'Look up any station. Callsigns anywhere on the dashboard are clickable and open here, with distance and beam heading from you.'],
-    [null, '#stationBtn', 'Your settings', 'Change the callsign and grid for this browser, hide tabs, run setup again, or replay this tour.'],
+    ['ref', '#refBandPlan', 'Reference', 'Where your license class can transmit on every band, plus GMRS, FRS, MURS and CB channel charts.'],
+    [null, '#stationBtn', 'Your settings', 'Change the callsign and grid for this browser, show times in UTC, hide tabs, run setup again, or replay this tour.'],
   ];
   const tour = { steps: [], i: 0, target: null };
 
@@ -2606,6 +2791,7 @@
     $('#setGrid').value = s.grid || '';
     $('#setGrid').placeholder = d.grid ? `Add-on default: ${d.grid}` : 'e.g. DM14xd';
     $('#setUnits').value = s.units || '';
+    $('#setTime').value = s.time || '';
     const hidden = new Set(s.hiddenTabs || []);
     $('#setTabs').innerHTML = TAB_NAMES.filter(([v]) => v !== 'weather')
       .map(([v, label]) => `<label class="check"><input type="checkbox" value="${v}"${hidden.has(v) ? '' : ' checked'}> ${label}</label>`).join('');
@@ -2764,7 +2950,7 @@
       if (grid && !/^[A-R]{2}\d{2}([A-X]{2})?$/i.test(grid)) { e.preventDefault(); err.textContent = 'Grid must be 4 or 6 characters, like DM14 or DM14xd.'; err.hidden = false; return; }
       const g = grid.length === 6 ? grid.slice(0, 4).toUpperCase() + grid.slice(4).toLowerCase() : grid.toUpperCase();
       const hiddenTabs = [...document.querySelectorAll('#setTabs input')].filter(i => !i.checked).map(i => i.value);
-      state.settings = { callsign: call, grid: g, units: $('#setUnits').value, hiddenTabs };
+      state.settings = { callsign: call, grid: g, units: $('#setUnits').value, time: $('#setTime').value, hiddenTabs };
       storeSet('hamdash.settings', JSON.stringify(state.settings));
       applyTabVisibility();
       stationChanged();
@@ -2791,6 +2977,7 @@
     if (currentView === 'pota') renderPota();
     if (currentView === 'sats') loadSats();
     if (look.result) renderLookup();
+    if (prop.data) renderProp();
   }
 
   // ------------------------------------------------------------ loaders
@@ -2828,11 +3015,14 @@
   async function loadCycle() {
     try { state.cycle = await api('api/cycle'); renderCycle(); } catch (e) { console.warn(e); renderCycle(); }
   }
-  async function loadLand() {
-    try {
-      state.land = decodeLand(await api('land-110m.json'));
-      for (const m of Object.values(maps)) m.plain.refill();
-    } catch (e) { console.warn(e); }
+  // The world outline (55 KB) is only needed by the Plain layer, so it's
+  // fetched the first time a map shows that layer.
+  let landRequest = null;
+  function ensureLand() {
+    landRequest ||= api('land-110m.json')
+      .then(topo => { state.land = decodeLand(topo); for (const m of Object.values(maps)) m.plain.refill(); })
+      .catch(e => { console.warn(e); landRequest = null; });
+    return landRequest;
   }
 
   // ------------------------------------------------------------ boot
@@ -2842,6 +3032,7 @@
     setInterval(tickClocks, 1000);
     bindSettings();
     bindProp();
+    bindRef();
     bindSetup();
     bindTour();
     bindMapTabs();
@@ -2968,7 +3159,7 @@
     showView(location.hash.slice(1) || storeGet('hamdash.view') || 'weather');
     startOnboarding();
 
-    loadLand(); loadSolar(); loadIono(); loadSpots(); loadPsk(); loadCycle(); loadActivity(); loadStorm(); loadSavedPaths();
+    loadSolar(); loadIono(); loadSpots(); loadPsk(); loadCycle(); loadActivity(); loadStorm(); loadSavedPaths();
     setInterval(loadSolar, 5 * 60000);
     setInterval(loadIono, 10 * 60000);
     setInterval(loadSpots, 30000);

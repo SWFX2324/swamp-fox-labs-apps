@@ -6,6 +6,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const zlib = require('zlib');
 const net = require('net');
 const { AprsIs } = require('./aprs');
 const HamCore = require('./static/hamcore');
@@ -14,6 +15,7 @@ const SATS = require('./sats');
 const VHF = require('./vhf');
 const Prop = require('./prop');
 const Prefixes = require('./prefixes');
+const { HamReference: Reference } = require('./static/reference');
 const { SourceStatus } = require('./status');
 
 const PORT = +(process.env.PORT || 8099);
@@ -600,7 +602,10 @@ async function resolveTarget(q) {
   const tlat = num(q.get('tlat')), tlon = num(q.get('tlon'));
   if (tlat !== null && tlon !== null && Math.abs(tlat) <= 90 && Math.abs(tlon) <= 180) {
     const grid = HamCore.latLonToGrid(tlat, tlon);
-    return { kind: 'point', label: grid, lat: tlat, lon: tlon, grid };
+    // A point may carry a name (a beacon's call) and place for display.
+    const label = String(q.get('tlabel') || '').toUpperCase().replace(/[^A-Z0-9/]/g, '').slice(0, 15);
+    const place = String(q.get('tplace') || '').replace(/[^\p{L}\p{N} ,.'()-]/gu, '').slice(0, 60);
+    return { kind: 'point', label: label || grid, lat: tlat, lon: tlon, grid, ...(place && { place }) };
   }
   const t = String(q.get('target') || '').trim().toUpperCase();
   if (GRID_RE.test(t)) {
@@ -665,6 +670,30 @@ function pathReport(from, to, inputs) {
     hours: s.hours.map(h => ({ t: h.t, muf: h.muf, bands: Object.fromEntries(Object.entries(h.bands).map(([b, x]) => [b, x.rating])) })),
   });
   return { short: side(a.short), long: side(a.long), medianRatio: a.medianRatio, anchorStations: a.stations };
+}
+
+// ---------------------------------------------------------------- NCDXF/IARU beacons
+
+// Short-path ratings right now from the QTH to each beacon on its five bands.
+// The schedule itself is computed in the browser from the clock.
+function beaconRatings(pos) {
+  return cached(`beacons-${pos.lat.toFixed(2)},${pos.lon.toFixed(2)}`, 5 * MIN, async () => {
+    const inputs = await pathInputs();
+    const now = Date.now();
+    const cal = Prop.calibration(inputs.stations, now, inputs.ssn);
+    const bands = Reference.BEACON_BANDS;
+    return {
+      computed: new Date(now).toISOString(),
+      beacons: Reference.BEACONS.map(b => {
+        const geo = Prop.pathGeometry(pos, b);
+        const r = Prop.evaluate(geo, now, { bands, ssn: inputs.ssn, kp: inputs.kp, cal });
+        return {
+          call: b.call, km: Math.round(geo.km), bearing: Math.round(geo.bearing), muf: r.muf,
+          bands: Object.fromEntries(bands.map(([band]) => [band, r.bands[band].rating])),
+        };
+      }),
+    };
+  });
 }
 
 // ---------------------------------------------------------------- saved paths
@@ -1273,9 +1302,19 @@ const SECURITY_HEADERS = {
   ].join('; '),
 };
 
+// Gzip text responses for browsers that accept it. Over a slow remote
+// connection this cuts the first load from about 480 KB to about 130 KB.
+const acceptsGzip = req => /\bgzip\b/.test(req?.headers['accept-encoding'] || '');
+const COMPRESSIBLE = /^(text\/|application\/json|image\/svg)/;
+
 function send(res, status, body, type = 'application/json') {
-  const data = type === 'application/json' ? JSON.stringify(body) : body;
-  res.writeHead(status, { ...SECURITY_HEADERS, 'Content-Type': type, 'Cache-Control': 'no-store' });
+  let data = type === 'application/json' ? JSON.stringify(body) : body;
+  const headers = { ...SECURITY_HEADERS, 'Content-Type': type, 'Cache-Control': 'no-store', Vary: 'Accept-Encoding' };
+  if (COMPRESSIBLE.test(type) && Buffer.byteLength(data) > 1400 && acceptsGzip(res.req)) {
+    data = zlib.gzipSync(data, { level: 5 });
+    headers['Content-Encoding'] = 'gzip';
+  }
+  res.writeHead(status, headers);
   res.end(data);
 }
 
@@ -1322,6 +1361,11 @@ async function api(route, q, res) {
     }
     case '/api/paths':
       return send(res, 200, { paths: readPaths(), max: MAX_SAVED_PATHS });
+    case '/api/beacons': {
+      const lat = num(q.get('lat')), lon = num(q.get('lon'));
+      if (lat === null || lon === null || Math.abs(lat) > 90 || Math.abs(lon) > 180) return send(res, 400, { error: 'Set a valid grid square' });
+      return send(res, 200, await beaconRatings({ lat, lon }));
+    }
     case '/api/status': {
       const a = aprs.snapshot();
       return send(res, 200, {
@@ -1390,22 +1434,47 @@ const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; cha
 // Asset links in index.html carry the app version, so a browser never mixes
 // an old app.js with a new page after an update. Outside Home Assistant the
 // start time stands in for the version.
-const ASSET_VERSION = process.env.APP_VERSION && process.env.APP_VERSION !== 'dev' ? process.env.APP_VERSION : String(Date.parse(STARTED));
-const VERSIONED = /((?:src|href)=")(lib\/leaflet\/leaflet\.(?:css|js)|style\.css|hamcore\.js|app\.js)"/g;
+const RELEASED = !!process.env.APP_VERSION && process.env.APP_VERSION !== 'dev';
+const ASSET_VERSION = RELEASED ? process.env.APP_VERSION : String(Date.parse(STARTED));
+const VERSIONED = /((?:src|href)=")(lib\/leaflet\/leaflet\.(?:css|js)|style\.css|hamcore\.js|reference\.js|app\.js)"/g;
 
 function serveStatic(url, res) {
   let rel;
   try { rel = url.pathname === '/' ? 'index.html' : decodeURIComponent(url.pathname).replace(/^\/+/, ''); } catch { return send(res, 400, { error: 'bad path' }); }
   const file = path.resolve(STATIC_DIR, rel);
   if (!file.startsWith(STATIC_DIR + path.sep)) return send(res, 403, { error: 'forbidden' });
-  fs.readFile(file, (err, data) => {
+  staticFile(file, rel === 'index.html', (err, f) => {
     if (err) return send(res, 404, { error: 'not found' });
-    const isPage = rel === 'index.html';
-    if (isPage) data = data.toString('utf8').replace(VERSIONED, (_, attr, f) => `${attr}${f}?v=${encodeURIComponent(ASSET_VERSION)}"`);
     // Versioned assets never change at the same URL; everything else revalidates.
-    const cache = isPage ? 'no-store' : url.searchParams.get('v') === ASSET_VERSION ? 'public, max-age=31536000, immutable' : 'no-cache';
-    res.writeHead(200, { ...SECURITY_HEADERS, 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': cache });
-    res.end(data);
+    // In development files change without a new version, so they always revalidate.
+    const cache = f.isPage ? 'no-store' : RELEASED && url.searchParams.get('v') === ASSET_VERSION ? 'public, max-age=31536000, immutable' : 'no-cache';
+    const gzip = f.gzip && acceptsGzip(res.req);
+    res.writeHead(200, {
+      ...SECURITY_HEADERS, 'Content-Type': f.type, 'Cache-Control': cache, Vary: 'Accept-Encoding',
+      ...(gzip && { 'Content-Encoding': 'gzip' }),
+    });
+    res.end(gzip ? f.gzip : f.data);
+  });
+}
+
+// Static files are read and compressed once, then served from memory. A file
+// is only read again if its modification time changes (an update, or editing
+// during development).
+const staticCache = new Map();
+
+function staticFile(file, isPage, cb) {
+  fs.stat(file, (err, st) => {
+    if (err || !st.isFile()) return cb(err || new Error('not a file'));
+    const hit = staticCache.get(file);
+    if (hit && hit.mtime === st.mtimeMs) return cb(null, hit);
+    fs.readFile(file, (err2, raw) => {
+      if (err2) return cb(err2);
+      const data = isPage ? Buffer.from(raw.toString('utf8').replace(VERSIONED, (_, attr, f) => `${attr}${f}?v=${encodeURIComponent(ASSET_VERSION)}"`)) : raw;
+      const type = MIME[path.extname(file)] || 'application/octet-stream';
+      const entry = { mtime: st.mtimeMs, isPage, type, data, gzip: COMPRESSIBLE.test(type) && data.length > 1400 ? zlib.gzipSync(data, { level: 9 }) : null };
+      staticCache.set(file, entry);
+      cb(null, entry);
+    });
   });
 }
 

@@ -15,13 +15,14 @@
       <h1>Ham Radio Dashboard</h1>
     </div>
     <nav class="tabs views" id="viewTabs" aria-label="Dashboard sections">
-      <button type="button" data-view="weather" aria-selected="true"><span class="long">Space weather</span><span class="short">Weather</span></button>
-      <button type="button" data-view="prop" aria-selected="false"><span class="long">Propagation</span><span class="short">Paths</span></button>
-      <button type="button" data-view="repeaters" aria-selected="false">Repeaters</button>
-      <button type="button" data-view="aprs" aria-selected="false">APRS</button>
-      <button type="button" data-view="pota" aria-selected="false">POTA</button>
-      <button type="button" data-view="sats" aria-selected="false"><span class="long">Satellites</span><span class="short">Sats</span></button>
-      <button type="button" data-view="lookup" aria-selected="false"><span class="long">Callsign lookup</span><span class="short">Lookup</span></button>
+      <button type="button" data-view="weather" aria-current="page"><span class="long">Space weather</span><span class="short">Weather</span></button>
+      <button type="button" data-view="prop"><span class="long">Propagation</span><span class="short">Paths</span></button>
+      <button type="button" data-view="repeaters">Repeaters</button>
+      <button type="button" data-view="aprs">APRS</button>
+      <button type="button" data-view="pota">POTA</button>
+      <button type="button" data-view="sats"><span class="long">Satellites</span><span class="short">Sats</span></button>
+      <button type="button" data-view="lookup"><span class="long">Callsign lookup</span><span class="short">Lookup</span></button>
+      <button type="button" data-view="ref"><span class="long">Reference</span><span class="short">Ref</span></button>
     </nav>
     <button class="station" id="stationBtn" type="button" title="Station settings">
       <span class="mono" id="hdrCall">NOCALL</span>
@@ -263,6 +264,16 @@
       <div class="map-legend" id="propGridLegend"></div>
       <p class="note" id="propDayNote"></p>
     </section>
+
+    <section class="card span-12" aria-labelledby="h-beacons" id="beaconCard">
+      <div class="card-head">
+        <h2 id="h-beacons">NCDXF/IARU beacons</h2>
+        <span class="meta" id="beaconMeta"></span>
+      </div>
+      <div class="beacon-now" id="beaconNow"></div>
+      <div class="table-wrap"><table class="data beacon-table" id="beaconTable"></table></div>
+      <p class="note">Eighteen beacons take turns on these five frequencies. Each sends its callsign in CW, then four dashes at 100 W, 10 W, 1 W and 0.1 W; hearing the weaker dashes means a better path. Every beacon comes around on every band each 3 minutes, so you can check a band in seconds. Ratings are the propagation estimate for your path to each beacon right now. Some beacons are off the air at times; see <a href="https://www.ncdxf.org/beacon/" target="_blank" rel="noopener">NCDXF</a> for status.</p>
+    </section>
   </main>
 
   <main class="grid view" id="view-repeaters" hidden>
@@ -412,6 +423,38 @@
     </section>
   </main>
 
+  <main class="grid view" id="view-ref" hidden>
+    <section class="card span-12" aria-labelledby="h-bandplan" id="refBandPlan">
+      <div class="card-head">
+        <h2 id="h-bandplan">US amateur band plan</h2>
+        <div class="tabs" role="tablist" aria-label="License class" id="refClassTabs"></div>
+      </div>
+      <p class="note" id="refClassNote"></p>
+      <div class="bandplan" id="refBands"></div>
+      <div class="map-legend" id="refLegend"></div>
+      <p class="note">From FCC Part 97 (sections 97.301, 97.305 and 97.313). Rules change, so check the current rules or the <a href="https://www.arrl.org/band-plan" target="_blank" rel="noopener">ARRL band chart</a> before you transmit. Power limit is 1500 W PEP unless noted.</p>
+    </section>
+
+    <section class="card span-7" aria-labelledby="h-gmrs" id="refGmrs">
+      <div class="card-head">
+        <h2 id="h-gmrs">GMRS and FRS channels</h2>
+      </div>
+      <div class="table-wrap"><table class="data ref-table" id="refGmrsTable"></table></div>
+      <p class="note">FRS radios need no license. GMRS needs an FCC license (no exam; one license covers your immediate family) and allows more power and repeaters. Power is the maximum ERP. From FCC Part 95.</p>
+    </section>
+
+    <section class="card span-5" aria-labelledby="h-free" id="refFree">
+      <div class="card-head">
+        <h2 id="h-free">MURS and CB</h2>
+      </div>
+      <h3 class="ref-sub">MURS · no license · 2 W</h3>
+      <div class="table-wrap"><table class="data ref-table" id="refMursTable"></table></div>
+      <h3 class="ref-sub">CB · no license · 4 W AM, 12 W SSB</h3>
+      <div class="table-wrap"><table class="data ref-table ref-cb" id="refCbTable"></table></div>
+      <p class="note">CB channel 9 is for emergencies and 19 is the common highway channel. From FCC Part 95.</p>
+    </section>
+  </main>
+
   <main class="grid view" id="view-lookup" hidden>
     <section class="card span-12" aria-labelledby="h-lookup">
       <div class="card-head">
@@ -475,31 +518,48 @@
     <div class="tour-pop" id="tourPop" role="dialog" aria-modal="false" aria-labelledby="tourTitle" tabindex="-1"></div>
   </div>
 
-  <dialog id="settings">
+  <dialog id="settings" aria-labelledby="settingsTitle">
     <form method="dialog" id="settingsForm">
-      <h2>Station settings</h2>
-      <p class="note">These are saved in this browser only, so each person can use their own callsign. Leave a field blank to use the add-on default.</p>
-      <label>Callsign
-        <input name="callsign" id="setCall" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="15" placeholder="e.g. KR4FCD">
-      </label>
-      <label>Grid square
-        <span class="input-row">
-          <input name="grid" id="setGrid" autocomplete="off" spellcheck="false" maxlength="6" placeholder="e.g. DM14xd">
-          <button type="button" class="secondary" id="locateBtn">Use my location</button>
-        </span>
-      </label>
-      <label>Distance units
-        <select name="units" id="setUnits"><option value="">Add-on default</option><option value="mi">Miles</option><option value="km">Kilometers</option></select>
-      </label>
-      <fieldset class="tab-choices">
-        <legend>Show these tabs</legend>
-        <div id="setTabs"></div>
-      </fieldset>
-      <div class="dialog-links">
-        <button type="button" class="link-btn" id="startTour">Take the tour</button>
-        <button type="button" class="link-btn" id="rerunSetup">Run setup again</button>
-        <button type="button" class="link-btn" id="startOver">Start over as a new user</button>
-      </div>
+      <h2 id="settingsTitle">Settings</h2>
+      <p class="note">Saved in this browser only, so each person can use their own. Leave a field blank to use the app’s configuration.</p>
+
+      <section class="set-section" aria-labelledby="setStationHead">
+        <h3 id="setStationHead">Station</h3>
+        <label>Callsign
+          <input name="callsign" id="setCall" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="15" placeholder="e.g. KR4FCD">
+        </label>
+        <label>Grid square
+          <span class="input-row">
+            <input name="grid" id="setGrid" autocomplete="off" spellcheck="false" maxlength="6" placeholder="e.g. DM14xd">
+            <button type="button" class="secondary" id="locateBtn">Use my location</button>
+          </span>
+        </label>
+      </section>
+
+      <section class="set-section" aria-labelledby="setDisplayHead">
+        <h3 id="setDisplayHead">Display</h3>
+        <div class="set-row">
+          <label>Distance units
+            <select name="units" id="setUnits"><option value="">App default</option><option value="mi">Miles</option><option value="km">Kilometers</option></select>
+          </label>
+          <label>Times
+            <select name="time" id="setTime"><option value="">Local time (this device)</option><option value="utc">UTC, 24-hour</option></select>
+          </label>
+        </div>
+        <fieldset class="tab-choices">
+          <legend>Show these tabs</legend>
+          <div id="setTabs"></div>
+        </fieldset>
+      </section>
+
+      <section class="set-section" aria-labelledby="setHelpHead">
+        <h3 id="setHelpHead">Help</h3>
+        <div class="dialog-links">
+          <button type="button" class="link-btn" id="startTour">Take the tour</button>
+          <button type="button" class="link-btn" id="rerunSetup">Run setup again</button>
+          <button type="button" class="link-btn" id="startOver">Start over as a new user</button>
+        </div>
+      </section>
       <details class="status-box" id="statusBox">
         <summary>Data sources and connections</summary>
         <div class="table-wrap"><table class="mini-table status-table" id="statusTable"></table></div>
@@ -521,6 +581,7 @@
 
   <script src="lib/leaflet/leaflet.js"></script>
   <script src="hamcore.js"></script>
+  <script src="reference.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

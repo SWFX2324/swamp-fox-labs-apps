@@ -1,9 +1,9 @@
 # Ham Radio Dashboard
 
 A read-only propagation, space-weather and station-lookup dashboard for amateur radio
-operators. It adds a **Ham Radio** panel to the Home Assistant sidebar, with seven
+operators. It adds a **Ham Radio** panel to the Home Assistant sidebar, with eight
 tabs: **Space weather**, **Propagation**, **Repeaters**, **APRS**, **POTA**,
-**Satellites** and **Callsign lookup**. It also publishes its data to Home Assistant as sensors and
+**Satellites**, **Callsign lookup** and **Reference**. It also publishes its data to Home Assistant as sensors and
 fires events you can use in automations (see [Home Assistant sensors and alerts](#home-assistant-sensors-and-alerts)).
 
 ## Getting started
@@ -40,10 +40,15 @@ differently for GMRS users and listeners:
 
 GMRS callsigns are never used to log in to amateur networks.
 
-### Hiding tabs
+### Settings
 
-Settings (⚙) has a **Show these tabs** list, saved per browser, so each person can
-hide tabs they don't use. Space weather always stays.
+Settings (⚙) is saved per browser, so each person can have their own:
+
+- **Station**: your callsign and grid square for this browser, if different from the
+  app's configuration.
+- **Display**: distance units; **Times** in local time or UTC (24-hour, marked Z);
+  and **Show these tabs**, to hide tabs you don't use. Space weather always stays.
+- **Help**: the tour, setup again, or start over as a new user.
 
 ### Data sources and connections
 
@@ -184,6 +189,23 @@ Treat it as a guide to when and where to listen. It doesn't know about noise at
 either end, antennas, power, sporadic-E, or flares and storms that haven't happened
 yet. When PSKReporter shows real decodes, they beat the estimate.
 
+### NCDXF/IARU beacons
+
+At the bottom of the Propagation tab. Eighteen beacons around the world take turns
+on 14.100, 18.110, 21.150, 24.930 and 28.200 MHz: each sends its callsign in CW,
+then dashes at 100 W, 10 W, 1 W and 0.1 W, and every beacon comes around on every
+band each 3 minutes.
+
+- The top row shows which beacon is on the air on each band right now, how your
+  path to it rates, and a countdown to the next one. Tune in: if you hear it, the
+  band is open in that direction.
+- The table rates your path to every beacon on every band, with the one that's
+  transmitting outlined. Click a beacon to analyze the full path to it.
+
+The schedule comes from the clock (it's synchronized to UTC), so it needs no data
+source. Beacons are sometimes off the air; [NCDXF](https://www.ncdxf.org/beacon/)
+lists their status.
+
 ### Saved paths
 
 **☆ Save path** keeps up to 10 paths you care about (a club station, a country you
@@ -192,6 +214,18 @@ Home Assistant sensor (`sensor.ham_path_<name>`) and an event when a band opens 
 it (see [Home Assistant sensors and alerts](#home-assistant-sensors-and-alerts)).
 Saved paths are stored by the app, so every browser sees the same list. Removing a
 path removes its sensor.
+
+## Reference
+
+- **US amateur band plan**: where each license class (Technician, General, Advanced,
+  Amateur Extra) can transmit on every band from 160 m to 70 cm, with CW/data,
+  phone and all-mode segments drawn to scale and power notes where they differ.
+  It opens on your own class, from the FCC record for your callsign, and remembers
+  the class you pick. From FCC Part 97; check the current rules or the ARRL band
+  chart before you transmit.
+- **GMRS and FRS channels**: all 22 channels with GMRS and FRS power limits and the
+  repeater input for channels 15–22. GMRS stations see this first.
+- **MURS and CB**: the license-free services, with their channels and power.
 
 ## Repeaters
 

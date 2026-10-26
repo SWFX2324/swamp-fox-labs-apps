@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.1.0
+
+New:
+
+- **NCDXF/IARU beacons** on the Propagation tab: which of the 18 beacons is on the air
+  on each band right now, with a countdown, and how your path to each one rates.
+  Click a beacon to analyze the path.
+- **Reference tab**: the US amateur band plan by license class (opens on your own
+  class from your FCC record), GMRS and FRS channels with power limits and repeater
+  pairs, and MURS and CB channels.
+
+Polish:
+
+- **Faster first load**: files are compressed, and the world outline only loads for
+  the Plain map layer. Over a slow connection on a Raspberry Pi-class machine the
+  first load dropped from about 480 KB to 130 KB, and the band table fills in
+  half the time.
+- **Times in UTC**: a new setting shows every time on the dashboard in UTC (24-hour,
+  marked Z) instead of local time.
+- **Settings** are grouped into Station, Display and Help.
+- **Phones**: all tabs fit in two rows instead of a row that scrolls sideways.
+- **Light mode**: captions and links are darker so they're easy to read, and the
+  24-hour outlook's shades are easier to tell apart.
+- **Accessibility**: focus outlines on every control you can tab to; charts and map
+  markers describe themselves to screen readers (the K-index and sunspot charts
+  read out their latest values); the main tabs use the right markup for
+  navigation; motion is reduced when your device asks for it.
+
 ## 1.0.2
 
 - The app now runs on the Alpine 3.24 base image with Node.js 24. Home Assistant

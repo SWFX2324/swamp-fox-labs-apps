@@ -35,6 +35,9 @@ and dark mode.
 - **Home Assistant sensors and alerts** (as an MQTT device when Mosquitto is installed): band conditions, space weather, satellite
   passes and POTA activity as entities, plus events for watched DX and nearby POTA
   activations
+- **Reference** tab: the US amateur band plan by license class, and GMRS/FRS,
+  MURS and CB channel charts
+- **NCDXF beacons**: which beacon is on each band right now, rated for your path
 - **Callsign lookup** tab: QRZ.com (with your own login) or free FCC data for US
   calls, with beam heading and great-circle path from your QTH
 
