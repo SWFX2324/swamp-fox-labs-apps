@@ -137,6 +137,35 @@ test('end to end against fake services', async t => {
   });
 });
 
+// As inside Home Assistant: the viewer comes from the ingress proxy's headers,
+// and there's no Supervisor to ask, so only the groups header makes an admin.
+test('only Home Assistant admins change setup and saved paths', async t => {
+  const s = await start({ INGRESS_ONLY: 'true', SUPERVISOR_TOKEN: '' });
+  t.after(() => stop(s));
+  const json = { 'Content-Type': 'application/json' };
+  const admin = { ...json, 'X-Remote-User-Id': 'a1', 'X-Remote-User-Groups': 'system-admin,system-users' };
+  const user = { ...json, 'X-Remote-User-Id': 'u1', 'X-Remote-User-Groups': 'system-users' };
+  const body = JSON.stringify({ label: 'Test path', target: { lat: 51, lon: 0, label: 'JO01' } });
+
+  const cfg = await getJson(s, '/api/config', { headers: user });
+  assert.equal(cfg.body.viewer.admin, false);
+  assert.equal((await getJson(s, '/api/config', { headers: admin })).body.viewer.admin, true);
+
+  for (const headers of [json, user, { ...json, 'X-Remote-User-Id': 'u2' }]) {
+    const r = await getJson(s, '/api/paths', { method: 'POST', headers, body });
+    assert.equal(r.status, 403);
+    assert.equal(r.body.admin_only, true);
+  }
+  assert.equal((await getJson(s, '/api/setup', { method: 'POST', headers: user, body: '{"skip":true}' })).status, 403);
+  assert.equal((await getJson(s, '/api/paths?id=test_path', { method: 'DELETE', headers: user })).status, 403);
+  // Reading is open to everyone.
+  assert.equal((await getJson(s, '/api/paths', { headers: user })).status, 200);
+
+  const ok = await getJson(s, '/api/paths', { method: 'POST', headers: admin, body });
+  assert.equal(ok.status, 200);
+  assert.equal((await getJson(s, '/api/paths?id=test_path', { method: 'DELETE', headers: admin })).body.paths.length, 0);
+});
+
 // Windows can't deliver SIGTERM to a child process, so the save-on-shutdown
 // path only runs on Linux (CI).
 test('PSKReporter data survives a restart', { skip: process.platform === 'win32' && 'needs SIGTERM (Linux)' }, async () => {

@@ -9,7 +9,7 @@
   const SVGNS = 'http://www.w3.org/2000/svg';
 
   const state = {
-    defaults: { callsign: '', grid: '', distance_units: 'mi' },
+    defaults: { callsign: '', grid: '', distance_units: 'mi', admin: true },
     settings: loadSettings(),
     solar: null, iono: [], spots: null, psk: null, cycle: null, land: null,
     bandFilter: storeGet('hamdash.band') || '',
@@ -2100,7 +2100,7 @@
     $('#propError').textContent = prop.error || '';
     $('#propMeta').textContent = d ? `SFI ${d.inputs.sfi ?? '—'} · SSN ${d.inputs.ssn} · Kp ${d.inputs.kp?.toFixed?.(1) ?? d.inputs.kp} · ${d.inputs.ionosondes} ionosondes` : prop.loading ? 'Analyzing…' : '';
     $('#propSaved').innerHTML = prop.saved.length
-      ? `<span class="meta">Saved:</span>${prop.saved.map(p => `<span class="chip-pair"><button type="button" class="chip" data-saved="${esc(p.id)}" title="${esc(p.place || p.grid)}">${esc(p.label)}</button><button type="button" class="chip chip-x" data-unsave="${esc(p.id)}" aria-label="Remove ${esc(p.label)}" title="Remove">×</button></span>`).join('')}`
+      ? `<span class="meta">Saved:</span>${prop.saved.map(p => `<span class="chip-pair"><button type="button" class="chip" data-saved="${esc(p.id)}" title="${esc(p.place || p.grid)}">${esc(p.label)}</button>${state.defaults.admin ? `<button type="button" class="chip chip-x" data-unsave="${esc(p.id)}" aria-label="Remove ${esc(p.label)}" title="Remove">×</button>` : ''}</span>`).join('')}`
       : '';
     $('#propHint').hidden = !!d;
     $('#propNowCard').hidden = !d;
@@ -2110,6 +2110,8 @@
 
     const t = d.target, s = d.short, l = d.long;
     const saved = isSaved(t);
+    // Saved paths are shared by the household: only admins add them.
+    $('#propSave').hidden = !state.defaults.admin;
     $('#propSave').textContent = saved ? '★ Saved' : '☆ Save path';
     $('#propSave').disabled = saved || prop.saved.length >= prop.max;
     $('#propSave').title = saved ? 'This path is saved' : prop.saved.length >= prop.max ? `You can save up to ${prop.max} paths` : 'Save this path and get a Home Assistant sensor for it';
@@ -2593,6 +2595,7 @@
 
   // Highlights per version, shown once after an update so new features get found.
   const WHATS_NEW = [
+    ['1.6.1', ['Everyone in your Home Assistant can open the dashboard; only admins can change setup and saved paths.']],
     ['1.6.0', ['Ready-made Home Assistant blueprints for band openings, DX spots, nearby POTA and lightning; the Documentation tab has import links.']],
     ['1.4.0', [
       'Collapse any card with the ▾ button at its top right; the dashboard remembers.',
@@ -2796,7 +2799,9 @@
         </dl>
         ${state.defaults.setup?.canSave
           ? '<p class="note">Saving updates the app’s Configuration tab and restarts the app, which takes about 10 seconds.</p>'
-          : '<p class="note">This dashboard isn’t running inside Home Assistant, so these settings are saved in this browser only.</p>'}`;
+          : state.defaults.admin
+            ? '<p class="note">This dashboard isn’t running inside Home Assistant, so these settings are saved in this browser only.</p>'
+            : '<p class="note">These settings are saved in this browser only. Only a Home Assistant admin can change the app’s configuration.</p>'}`;
     }
 
     const last = step === 'review';
@@ -3069,7 +3074,7 @@
         <thead><tr><th></th><th>This browser</th><th>App configuration</th></tr></thead>
         <tbody>${row('Callsign', st.callsign, String(d.callsign || '').toUpperCase())}${row('Grid', st.grid, d.grid)}${row('Units', unitName(st.units), unitName(d.distance_units))}</tbody>
       </table>
-      <p class="note">Home Assistant sensors, alerts, saved paths and the model check always use the <b>app configuration</b>. To change it, use <b>Run setup again</b> below, or the app’s Configuration tab in Home Assistant.${overrides().length ? ' This browser is overriding it, marked with a dot by your callsign at the top.' : ''}</p>`;
+      <p class="note">Home Assistant sensors, alerts, saved paths and the model check always use the <b>app configuration</b>. ${d.admin ? 'To change it, use <b>Run setup again</b> below, or the app’s Configuration tab in Home Assistant.' : 'Only a Home Assistant admin can change it.'}${overrides().length ? ' This browser is overriding it, marked with a dot by your callsign at the top.' : ''}</p>`;
   }
 
   function openSettings() {
@@ -3452,8 +3457,12 @@
       state.defaults = {
         callsign: cfg.callsign || '', grid: cfg.grid || '', distance_units: cfg.distance_units || 'mi',
         qrz: Boolean(cfg.qrz), spot_watch: cfg.spot_watch || [],
-        station_type: cfg.station_type || 'amateur', setup: cfg.setup || {}, features: cfg.features || {},
+        station_type: cfg.station_type || 'amateur', features: cfg.features || {},
         version: cfg.version || '',
+        // Only Home Assistant admins change the app's configuration and saved
+        // paths; everyone else's setup is saved in their own browser.
+        admin: cfg.viewer?.admin !== false,
+        setup: { ...cfg.setup, canSave: Boolean(cfg.setup?.canSave && cfg.viewer?.admin !== false) },
       };
     } catch (e) { console.warn(e); }
     renderHeader();

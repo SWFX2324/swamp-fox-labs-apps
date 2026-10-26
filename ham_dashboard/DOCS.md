@@ -37,7 +37,8 @@ The first time you open the dashboard, a short **setup** asks:
    Home Assistant sensors).
 
 Saving writes these into the app's **Configuration** tab and restarts the app, which
-takes about 10 seconds. You can skip setup, and run it again from settings (⚙ at the
+takes about 10 seconds. Only Home Assistant administrators can do this; for other
+users, setup saves to their own browser (see [Who can use it](#security-and-privacy)). You can skip setup, and run it again from settings (⚙ at the
 top right).
 
 After setup, and once in every new browser, a short **tour** walks through the tabs.
@@ -690,9 +691,17 @@ The dashboard is receive-only: it never transmits, and it only reads public data
   https://github.com/SWFX2324/swamp-fox-labs-apps/.github/workflows/build.yaml@refs/heads/main
   --certificate-oidc-issuer https://token.actions.githubusercontent.com`
   (use `ham-dashboard-aarch64` on a Raspberry Pi, and your installed version).
+- **Who can use it.** Every Home Assistant user sees **Ham Radio** in the
+  sidebar and can use the whole dashboard, including their own browser settings.
+  Only administrators can change what the household shares: setup (the app's
+  configuration) and saved paths, which drive sensors and automations. For
+  everyone else the **Save path** and remove buttons are hidden, and setup saves
+  to their browser only. The app checks this itself, from the user Home
+  Assistant says is viewing; if it can't confirm an admin, it refuses the change.
+  Each person can hide it from their own sidebar; **Show in sidebar** on the
+  app's Info tab hides it for everyone.
 - **Security and privacy.** The dashboard only accepts connections from Home
-  Assistant's ingress proxy, so it's reachable only through the sidebar, by
-  Home Assistant administrators. Your QRZ password stays in the app's
+  Assistant's ingress proxy, so it's reachable only through the sidebar. Your QRZ password stays in the app's
   configuration and is only ever sent to QRZ. Map tiles come from OpenStreetMap
   and USGS, which see the map area you're viewing (the **Plain** layer avoids
   them), and PSKReporter queries include your 2-character grid field.

@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.1
+
+- **Every Home Assistant user can open the dashboard.** Home Assistant now enforces
+  admin-only panels (Supervisor 2026.10.2), which hid the dashboard from regular
+  users. It's open to all users again, and the app itself keeps the shared
+  settings for admins: only they can run setup for the app's configuration or add
+  and remove saved paths. Other users' setup and settings stay in their own
+  browser.
+
 ## 1.6.0
 
 Easier to automate, better documented, and tested end to end.

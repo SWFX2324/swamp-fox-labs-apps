@@ -1,5 +1,5 @@
 name: Ham Radio Dashboard
-version: "1.6.0"
+version: "1.6.1"
 slug: ham_dashboard
 description: Band conditions, point-to-point propagation, space weather and DX spots for amateur radio operators
 url: https://github.com/SWFX2324/swamp-fox-labs-apps/tree/main/ham_dashboard
@@ -14,6 +14,9 @@ services:
   - mqtt:want
 panel_icon: mdi:radio-tower
 panel_title: Ham Radio
+# Every Home Assistant user can open the panel; the server keeps setup and
+# saved paths for admins (app/users.js).
+panel_admin: false
 options:
   station_type: amateur
   callsign: ""

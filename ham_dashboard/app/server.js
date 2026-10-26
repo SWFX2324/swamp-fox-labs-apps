@@ -11,6 +11,7 @@ const net = require('net');
 const { AprsIs } = require('./aprs');
 const HamCore = require('./static/hamcore');
 const { HomeAssistant } = require('./ha');
+const { Users } = require('./users');
 const SATS = require('./sats');
 const VHF = require('./vhf');
 const { createCache } = require('./cache');
@@ -1353,7 +1354,7 @@ function send(res, status, body, type = 'application/json') {
 
 const settle = async p => { try { return await p; } catch (e) { console.warn('[fetch]', e.message); return null; } };
 
-async function api(route, q, res) {
+async function api(route, q, res, req) {
   switch (route) {
     case '/api/config':
       return send(res, 200, {
@@ -1361,6 +1362,7 @@ async function api(route, q, res) {
         station_type: options.station_type,
         callsign: options.callsign, grid: options.grid, distance_units: options.distance_units,
         setup: { needed: needsSetup(), done: setupDone(), canSave: canSaveSetup() },
+        viewer: await users.viewer(req),
         features: { aprs: options.aprs_enabled, dx_cluster: options.dx_cluster_enabled, nws: options.nws_alerts, ha_sensors: options.ha_sensors },
         cluster: { status: cluster.status, host: options.dx_cluster_host, error: cluster.error },
         qrz: qrzConfigured(),
@@ -1432,6 +1434,7 @@ async function api(route, q, res) {
           cluster: { status: cluster.status, host: options.dx_cluster_host, error: cluster.error ?? null, spots: cluster.spots.length },
           aprs: { status: a.status, server: a.server ?? null, error: a.error ?? null, stations: a.stations.length, packets: a.packets },
           ha: ha.status(),
+          users: { error: users.lastError },
           apparmor,
         },
       });
@@ -1556,6 +1559,26 @@ function writeAllowed(req) {
   return /^application\/json\b/i.test(req.headers['content-type'] || '');
 }
 
+// Setup and saved paths are shared by the whole household: admins only.
+const users = new Users({
+  enforce: IN_HOME_ASSISTANT,
+  token: ha.token,
+  wsUrl: process.env.HA_WS_URL || `${(process.env.SUPERVISOR_URL || 'http://supervisor').replace(/^http/, 'ws')}/core/websocket`,
+});
+const ADMIN_ONLY = {
+  unknown: 'Only Home Assistant admins can change this. Open the dashboard from the Home Assistant sidebar.',
+  user: 'Only Home Assistant admins can change this.',
+  unavailable: 'Couldn’t confirm you’re a Home Assistant admin, so this wasn’t saved. Try again in a minute.',
+};
+
+async function adminOnly(req, res) {
+  const v = await users.viewer(req);
+  if (v.admin) return false;
+  console.warn(`[http] refused ${req.method} ${req.url.split('?')[0]} from a non-admin (${v.reason})`);
+  send(res, 403, { error: ADMIN_ONLY[v.reason] || ADMIN_ONLY.user, admin_only: true });
+  return true;
+}
+
 http.createServer(async (req, res) => {
   try {
     if (!clientAllowed(req)) {
@@ -1564,9 +1587,9 @@ http.createServer(async (req, res) => {
     }
     const url = new URL(req.url, 'http://localhost');
     if (req.method !== 'GET' && req.method !== 'HEAD' && !writeAllowed(req)) return send(res, 403, { error: 'Request refused' });
-    if (url.pathname === '/api/setup' && req.method === 'POST') return await handleSetup(req, res);
-    if (url.pathname === '/api/paths' && (req.method === 'POST' || req.method === 'DELETE')) return await handlePaths(req, res, url);
-    if (url.pathname.startsWith('/api/')) return await api(url.pathname, url.searchParams, res);
+    if (url.pathname === '/api/setup' && req.method === 'POST') return await adminOnly(req, res) || await handleSetup(req, res);
+    if (url.pathname === '/api/paths' && (req.method === 'POST' || req.method === 'DELETE')) return await adminOnly(req, res) || await handlePaths(req, res, url);
+    if (url.pathname.startsWith('/api/')) return await api(url.pathname, url.searchParams, res, req);
     return serveStatic(url, res);
   } catch (e) {
     console.error('[http]', e.message);
