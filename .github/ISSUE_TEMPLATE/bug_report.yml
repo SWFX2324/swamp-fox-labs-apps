@@ -1,0 +1,50 @@
+name: Bug report
+description: Something in Ham Radio Dashboard is broken or wrong.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! Issues are public, so leave out passwords, your QRZ
+        login and anything else private.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you saw, and what you expected instead. Screenshots help.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How can it be reproduced?
+      description: The tab you were on and the steps that lead to the problem.
+      placeholder: |
+        1. Open the APRS tab
+        2. Click a station on the map
+        3. ...
+  - type: textarea
+    id: status
+    attributes:
+      label: Dashboard details
+      description: >-
+        In the dashboard, open settings (⚙ at the top right) → **Data sources and
+        connections** → **Copy details for a bug report**, and paste it here. It
+        includes the version and the status of each data source, but not your
+        callsign, and only a 4-character grid.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: App log
+      description: >-
+        Settings → Apps → Ham Radio Dashboard → **Log** in Home Assistant. Paste the
+        lines around the problem.
+      render: text
+  - type: input
+    id: ha
+    attributes:
+      label: Home Assistant version and hardware
+      placeholder: e.g. Core 2026.10.3, Supervisor 2026.10.1, Raspberry Pi 5

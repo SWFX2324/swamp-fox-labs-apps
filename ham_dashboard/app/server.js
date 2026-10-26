@@ -12,8 +12,10 @@ const HamCore = require('./static/hamcore');
 const { HomeAssistant } = require('./ha');
 const SATS = require('./sats');
 const VHF = require('./vhf');
+const { SourceStatus } = require('./status');
 
 const PORT = +(process.env.PORT || 8099);
+const STARTED = new Date().toISOString();
 const STATIC_DIR = path.join(__dirname, 'static');
 const SWPC = 'https://services.swpc.noaa.gov';
 const UA = 'SwampFoxLabs-HamRadioDashboard/0.6 (Home Assistant app; github.com/SWFX2324/swamp-fox-labs-apps)';
@@ -73,8 +75,9 @@ function cached(key, ttlMs, fn) {
     return Promise.reject(new Error(`${key}: rate limited by the source, retrying later`));
   }
   const p = fn()
-    .then(v => { cache.set(key, { t: Date.now(), v }); blockedUntil.delete(key); return v; })
+    .then(v => { cache.set(key, { t: Date.now(), v }); blockedUntil.delete(key); noteSource(key); return v; })
     .catch(err => {
+      noteSource(key, err);
       const wait = err.status === 429 ? 15 * MIN : MIN;
       if (err.status === 429) blockedUntil.set(key, Date.now() + wait);
       if (hit && 'v' in hit) {
@@ -88,6 +91,9 @@ function cached(key, ttlMs, fn) {
   cache.set(key, { ...(hit || {}), p });
   return p;
 }
+
+const sourceStatus = new SourceStatus();
+const noteSource = (key, err) => sourceStatus.note(key, err);
 
 async function get(url, type = 'json') {
   const r = await fetch(url, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(20_000) });
@@ -1115,6 +1121,20 @@ async function api(route, q, res) {
       const lat = num(q.get('lat')), lon = num(q.get('lon'));
       if (lat === null || lon === null || Math.abs(lat) > 90 || Math.abs(lon) > 180) return send(res, 400, { error: 'Set a valid grid square' });
       return send(res, 200, await vhfOpenings({ lat, lon }));
+    }
+    case '/api/status': {
+      const a = aprs.snapshot();
+      return send(res, 200, {
+        version: process.env.APP_VERSION || 'dev',
+        started: STARTED, now: new Date().toISOString(),
+        station_type: options.station_type, grid: options.grid,
+        sources: sourceStatus.report(),
+        live: {
+          cluster: { status: cluster.status, host: options.dx_cluster_host, error: cluster.error ?? null, spots: cluster.spots.length },
+          aprs: { status: a.status, server: a.server ?? null, error: a.error ?? null, stations: a.stations.length, packets: a.packets },
+          ha: ha.status(),
+        },
+      });
     }
     case '/api/storm':
       return send(res, 200, await stormSafety());

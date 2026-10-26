@@ -1,0 +1,29 @@
+name: Feature request
+description: An idea for something the dashboard could show or do.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The dashboard is information-only: it never transmits. Ideas that use a
+        free data source with terms allowing this kind of use are the easiest to add.
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like?
+      description: What it would show or do, and how you'd use it on the air.
+    validations:
+      required: true
+  - type: textarea
+    id: source
+    attributes:
+      label: Where would the data come from?
+      description: A website or API you know of, if any.
+  - type: dropdown
+    id: station
+    attributes:
+      label: Your station type
+      options:
+        - Licensed amateur
+        - GMRS
+        - Just listening

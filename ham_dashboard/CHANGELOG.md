@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.9.1
+
+- **Data sources and connections** in settings: when each data source last
+  updated and any error (including rate limiting), plus the DX cluster, APRS-IS and
+  Home Assistant connections. **Copy details for a bug report** copies the version
+  and this list for a GitHub issue, without your callsign and with only a
+  4-character grid.
+- Under the HF band table: the next sunrise or sunset at your QTH and what the
+  bands usually do then, and a note while you're in the gray line.
+- GitHub: bug report and feature request forms, and the build and check workflows
+  moved to current action versions (Node 24).
+
 ## 0.9.0
 
 - **VHF openings**: a new card on the Space weather tab shows when 6 m and 2 m are

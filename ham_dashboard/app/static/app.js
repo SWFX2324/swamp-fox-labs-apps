@@ -235,6 +235,45 @@
       note += `“Heard nearby” is measured: distinct stations that PSKReporter monitors within ${fmtDist(act.radiusKm)} of you decoded in the last ${act.windowMin} minutes (mostly FT8/FT4), with how many were DX (over ${fmtDist(act.dxKm)} away). Zero can also mean nobody nearby is listening on that band.`;
     }
     $('#bandsNote').textContent = note;
+    renderBandsNext(pos);
+  }
+
+  const inTime = ms => {
+    const m = Math.round(ms / 60000);
+    return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ''}`;
+  };
+
+  // What the bands usually do at the next sunrise or sunset at the QTH. A
+  // rule of thumb from the sun, not a forecast: only the current MUF is measured.
+  function renderBandsNext(pos) {
+    const el = $('#bandsNext');
+    if (!pos) { el.hidden = true; return; }
+    const now = Date.now();
+    const events = [];
+    for (const day of [0, 1]) {
+      const t = sunTimes(pos, new Date(now + day * 86400000));
+      for (const k of ['dawn', 'sunrise', 'sunset', 'dusk']) if (t[k]) events.push({ k, t: t[k].getTime() });
+    }
+    events.sort((a, b) => a.t - b.t);
+    const next = k => events.find(e => e.k === k && e.t > now);
+    const rise = next('sunrise'), set = next('sunset');
+    if (!rise && !set) { el.hidden = true; return; }
+    const parts = [];
+    // Civil twilight (sun between 0° and -6°) is the gray line. It ends at
+    // sunrise in the morning and at dusk in the evening.
+    const alt = sunAltitude(sunPosition(new Date(now)), pos.lat, pos.lon);
+    const morning = rise && (!set || rise.t < set.t);
+    const grayEnd = morning ? rise : next('dusk');
+    if (alt < -0.833 && alt > -6 && grayEnd) {
+      parts.push(`<b>Gray line now</b> until about ${esc(localHM(new Date(grayEnd.t)))}: a good time for low-band DX along the day/night line.`);
+    }
+    if (!morning) {
+      parts.push(`<b>Sunset ${esc(localHM(new Date(set.t)))}</b> (in ${inTime(set.t - now)}). After dark the MUF usually falls: 17–10 m tend to close within a couple of hours, and 80 m and 160 m open up for DX.`);
+    } else {
+      parts.push(`<b>Sunrise ${esc(localHM(new Date(rise.t)))}</b> (in ${inTime(rise.t - now)}). After sunrise the MUF climbs and 20 m and up open, first toward the east, while daytime absorption fades 160 m and 80 m within an hour or so.`);
+    }
+    el.innerHTML = parts.join(' ');
+    el.hidden = false;
   }
 
   // ------------------------------------------------------------ VHF openings
@@ -2292,10 +2331,88 @@
     $('#startOver').hidden = !d.setup?.canSave;
     $('#settingsError').hidden = true;
     $('#settings').showModal();
+    if ($('#statusBox').open) loadStatus();
+  }
+
+  // ------------------------------------------------------------ data source status
+
+  let lastStatus = null;
+  const STATUS_PILL = { ok: ['good', 'OK'], stale: ['fair', 'Using last data'], error: ['poor', 'Failing'], unused: ['none', 'Not used yet'] };
+  const LIVE_PILL = {
+    connected: ['good', 'Connected'], connecting: ['fair', 'Connecting'], reconnecting: ['fair', 'Reconnecting'],
+    disabled: ['none', 'Off'], 'no-callsign': ['none', 'No callsign'], 'no-grid': ['none', 'No grid'], 'no-license': ['none', 'Amateur only'],
+  };
+
+  function statusRows(s) {
+    const src = s.sources.map(x => {
+      const [cls, label] = x.limited && x.state !== 'ok' ? ['fair', 'Rate limited'] : STATUS_PILL[x.state];
+      const sub = [x.ok && `Updated ${ago(x.ok)}`, x.state !== 'ok' && x.error && `${x.error} (${ago(x.errorAt)})`].filter(Boolean).join(' · ');
+      return { name: x.name, cls, label, sub };
+    });
+    const { cluster, aprs, ha } = s.live;
+    const live = [
+      { name: 'DX cluster', ...pillOf(LIVE_PILL[cluster.status]), sub: [cluster.host, cluster.status === 'connected' && `${cluster.spots} spots`, cluster.error].filter(Boolean).join(' · ') },
+      { name: 'APRS-IS', ...pillOf(LIVE_PILL[aprs.status]), sub: [aprs.server, aprs.status === 'connected' && `${aprs.stations} stations, ${aprs.packets} packets`, aprs.error].filter(Boolean).join(' · ') },
+      {
+        name: 'Home Assistant',
+        ...pillOf(!ha.enabled ? ['none', 'Off'] : ha.error ? ['poor', 'Problem'] : ['good', ha.mode === 'mqtt' ? 'MQTT' : 'REST']),
+        sub: [ha.enabled && `${ha.entities ?? 0} entities`, ha.lastPublish && `published ${ago(ha.lastPublish)}`, ha.error].filter(Boolean).join(' · '),
+      },
+    ];
+    return [...src, ...live];
+  }
+  function pillOf(p) { const [cls, label] = p || ['none', '—']; return { cls, label }; }
+
+  async function loadStatus() {
+    $('#statusTable').innerHTML = '<tbody><tr><td class="empty">Loading…</td></tr></tbody>';
+    try {
+      lastStatus = await api('api/status');
+      $('#statusTable').innerHTML = `<tbody>${statusRows(lastStatus).map(r =>
+        `<tr><td>${esc(r.name)}</td><td>${pill(r.cls, r.label)}${r.sub ? `<div class="sub">${esc(r.sub)}</div>` : ''}</td></tr>`).join('')}</tbody>`;
+    } catch (e) {
+      $('#statusTable').innerHTML = `<tbody><tr><td class="empty">Couldn’t load status: ${esc(e.message)}</td></tr></tbody>`;
+    }
+  }
+
+  // Plain text for a GitHub issue. No callsign, and only a 4-character grid,
+  // since issues are public.
+  function statusText(s) {
+    const nl = String.fromCharCode(10);
+    return [
+      `Ham Radio Dashboard ${s.version} · ${s.station_type} · grid ${(s.grid || 'not set').slice(0, 4)}`,
+      `Running since ${s.started} · checked ${s.now}`,
+      `Browser: ${navigator.userAgent}`,
+      '',
+      ...statusRows(s).map(r => `${r.name}: ${r.label}${r.sub ? ` (${r.sub})` : ''}`),
+    ].join(nl);
+  }
+
+  async function copyStatus() {
+    if (!lastStatus) await loadStatus();
+    if (!lastStatus) return;
+    const text = statusText(lastStatus);
+    const box = $('#statusText');
+    try {
+      // Some frames never answer a clipboard request, so don't wait forever.
+      await Promise.race([
+        navigator.clipboard.writeText(text),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 1500)),
+      ]);
+      $('#copyStatusMsg').textContent = 'Copied. Paste it into your GitHub issue.';
+      box.hidden = true;
+    } catch {
+      // Clipboard access can be blocked inside the Home Assistant frame.
+      box.value = text;
+      box.hidden = false;
+      box.select();
+      $('#copyStatusMsg').textContent = 'Select the text below and copy it.';
+    }
   }
 
   function bindSettings() {
     $('#stationBtn').addEventListener('click', openSettings);
+    $('#statusBox').addEventListener('toggle', () => { if ($('#statusBox').open) loadStatus(); });
+    $('#copyStatus').addEventListener('click', copyStatus);
     $('#startTour').addEventListener('click', () => { $('#settings').close(); startTour(); });
     $('#rerunSetup').addEventListener('click', () => { $('#settings').close(); openSetup({ rerun: true }); });
     $('#startOver').addEventListener('click', () => {

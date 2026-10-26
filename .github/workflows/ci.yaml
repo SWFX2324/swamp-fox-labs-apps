@@ -14,7 +14,7 @@ jobs:
     name: App linter
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: frenck/action-addon-linter@v2
         with:
           path: ./ham_dashboard
@@ -23,8 +23,8 @@ jobs:
     name: Syntax and unit tests
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - name: Syntax check

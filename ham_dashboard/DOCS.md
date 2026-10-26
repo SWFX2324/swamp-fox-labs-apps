@@ -45,6 +45,18 @@ GMRS callsigns are never used to log in to amateur networks.
 Settings (⚙) has a **Show these tabs** list, saved per browser, so each person can
 hide tabs they don't use. Space weather always stays.
 
+### Data sources and connections
+
+If a panel is empty or out of date, open settings (⚙) → **Data sources and
+connections**. It lists each data source with when it last updated and any error
+(for example "Rate limited" when PSKReporter asks the app to slow down), plus the
+DX cluster, APRS-IS and Home Assistant connections.
+
+**Copy details for a bug report** copies the app version and this list, ready to
+paste into a [GitHub issue](https://github.com/SWFX2324/swamp-fox-labs-apps/issues/new/choose).
+It leaves out your callsign and shortens your grid to 4 characters, since issues
+are public.
+
 ## Maps
 
 The gray line, Repeaters, APRS, POTA and Lookup maps can be zoomed and panned.
@@ -74,6 +86,9 @@ services see which area you're viewing.
   (geomagnetic) levels, yesterday's maximum and the 3-day probability forecast.
 - **HF band conditions, 160 m – 10 m**
   - *HamQSL* day/night ratings by N0NBH.
+  - Below the table, the next sunrise or sunset at your QTH and what the bands
+    usually do then, and when you're in the gray line. This is a rule of thumb from
+    the sun, not a forecast.
   - *At your QTH now* – a local estimate that compares each band with the MUF(3000)
     measured by the nearest ionosonde (within 3000 km, last 3 hours), adjusted for
     daytime D-layer absorption on 80/60/40 m and for geomagnetic storms.

@@ -77,6 +77,7 @@
       <div class="table-wrap">
         <table class="bands" id="bandsTable"></table>
       </div>
+      <p class="band-next" id="bandsNext" hidden></p>
       <p class="note" id="bandsNote"></p>
     </section>
 
@@ -433,6 +434,15 @@
         <button type="button" class="link-btn" id="rerunSetup">Run setup again</button>
         <button type="button" class="link-btn" id="startOver">Start over as a new user</button>
       </div>
+      <details class="status-box" id="statusBox">
+        <summary>Data sources and connections</summary>
+        <div class="table-wrap"><table class="mini-table status-table" id="statusTable"></table></div>
+        <div class="dialog-links">
+          <button type="button" class="link-btn" id="copyStatus">Copy details for a bug report</button>
+          <span class="meta" id="copyStatusMsg" aria-live="polite"></span>
+        </div>
+        <textarea id="statusText" readonly hidden rows="8" aria-label="Details for a bug report"></textarea>
+      </details>
       <p class="error" id="settingsError" hidden></p>
       <div class="dialog-actions">
         <button type="button" class="secondary" id="resetSettings">Use add-on defaults</button>
