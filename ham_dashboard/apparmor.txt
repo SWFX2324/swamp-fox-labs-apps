@@ -1,0 +1,79 @@
+#include <tunables/global>
+
+# AppArmor profile for Ham Radio Dashboard.
+#
+# Shipped in complain mode first: nothing is blocked, but anything outside this
+# profile is logged as apparmor="ALLOWED". Once real installs run without such
+# entries, the complain flags are removed and the profile is enforced. To check:
+#   journalctl _TRANSPORT="audit" -g 'apparmor="ALLOWED"' | grep ham_dashboard
+
+profile ham_dashboard flags=(attach_disconnected,mediate_deleted,complain) {
+  #include <abstractions/base>
+
+  # Capabilities
+  file,
+  signal (send) set=(kill,term,int,hup,cont),
+
+  # S6-Overlay (the base image's init)
+  /init ix,
+  /bin/** ix,
+  /usr/bin/** ix,
+  /run/{s6,s6-rc*,service}/** ix,
+  /package/** ix,
+  /command/** ix,
+  /etc/s6-overlay/** rwix,
+  /run/{,**} rwk,
+  /dev/tty rw,
+  /tmp/** rwk,
+
+  # The app's options, cache, saved paths and accuracy log
+  /data/** rw,
+
+  # The app itself runs in its own, narrower profile
+  /usr/bin/node cx -> node,
+
+  profile node flags=(attach_disconnected,mediate_deleted,complain) {
+    #include <abstractions/base>
+
+    # Stop signals from S6-Overlay
+    signal (receive) peer=*ham_dashboard,
+
+    # Outgoing connections to data sources, Home Assistant, MQTT, APRS-IS and
+    # the DX cluster, the ingress listener, and DNS lookups
+    network inet stream,
+    network inet6 stream,
+    network inet dgram,
+    network inet6 dgram,
+
+    # Node.js and its libraries
+    /usr/bin/node rm,
+    /usr/lib/** rm,
+    /lib/** rm,
+
+    # The app's code (read only)
+    /app/** r,
+
+    # The app's own storage
+    /data/** rw,
+    /tmp/** rw,
+
+    # The Supervisor token, which s6 passes in this folder
+    /run/s6/container_environment/** r,
+
+    # DNS and TLS certificates
+    /etc/hosts r,
+    /etc/resolv.conf r,
+    /etc/nsswitch.conf r,
+    /etc/ssl/** r,
+    /etc/ca-certificates/** r,
+    /usr/share/ca-certificates/** r,
+
+    # What Node reads at start (memory, CPUs, its own process, cgroup limits)
+    @{PROC}/** r,
+    /sys/fs/cgroup/** r,
+    /sys/devices/system/cpu/** r,
+    /dev/null rw,
+    /dev/urandom r,
+    /dev/random r,
+  }
+}

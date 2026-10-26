@@ -185,6 +185,15 @@ A simplified model in the spirit of ITU-R P.533, not VOACAP:
    sunspot number and the frequency. It closes the low bands on long daylight paths.
 5. Paths through the auroral zone lose one or two steps when Kp is 4 or more.
 
+**Model check.** Every 15 minutes the app compares the model with reality: it takes
+the long-distance paths (2000 km or more) that PSKReporter shows being decoded near
+you and records how the model rated each one at that moment. After a few days the
+Propagation tab shows how often the model agreed, for example "of 1,400 real paths
+heard near you, the model rated 71% fair or good". The check uses data the app has
+already fetched, so it adds no PSKReporter traffic, and the log stores only bands,
+counts and ratings (no callsigns). It stays on your install, up to about 3 MB;
+**Download the log** saves it if you'd like to send it in to help tune the model.
+
 Treat it as a guide to when and where to listen. It doesn't know about noise at
 either end, antennas, power, sporadic-E, or flares and storms that haven't happened
 yet. When PSKReporter shows real decodes, they beat the estimate.
@@ -540,6 +549,15 @@ devices doesn't multiply the requests to these free services.
 
 ## Notes
 
+- **Restarts.** PSKReporter results and any rate-limit back-off are kept in the
+  app's storage, so restarting or updating the app doesn't refetch them straight
+  away (PSKReporter asks clients to query at most every 5 minutes).
+- **AppArmor.** The app ships its own AppArmor profile, at first in *complain* mode:
+  nothing is blocked, but anything outside the profile is logged. If you'd like to
+  help, after a day or two run this in the SSH & Web Terminal app and send any
+  lines it prints:
+  `journalctl _TRANSPORT="audit" -g 'apparmor="ALLOWED"' | grep ham_dashboard`.
+  A later release switches the profile to enforce.
 - **Security and privacy.** The dashboard only accepts connections from Home
   Assistant's ingress proxy, so it's reachable only through the sidebar, by
   Home Assistant administrators. Your QRZ password stays in the app's

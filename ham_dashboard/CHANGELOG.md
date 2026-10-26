@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.2.0
+
+Reliability and security.
+
+- **Restarts keep PSKReporter data.** Results and any rate-limit back-off are saved
+  in the app's storage and restored on start, so an update or restart shows recent
+  data straight away instead of refetching and often hitting PSKReporter's rate
+  limit.
+- **Bounded memory.** The data cache sweeps out old entries and holds at most 500,
+  and the data source status list keeps at most 200, so memory use stays flat over
+  months of lookups and paths.
+- **AppArmor profile**, in complain mode for now: it logs anything outside the
+  profile without blocking it. A later release enforces it once real installs show
+  no surprises. See the documentation for how to check the log.
+- **Model check.** The app now compares the propagation model with the real
+  long-distance paths PSKReporter shows near you, every 15 minutes, using data it
+  already has. The Propagation tab shows how often the model agreed over the last 7
+  days, and the log (no callsigns) can be downloaded to help tune the model.
+
 ## 1.1.1
 
 - Fixed: when PSKReporter couldn't be reached (for example rate limiting right after

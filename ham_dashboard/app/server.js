@@ -13,13 +13,16 @@ const HamCore = require('./static/hamcore');
 const { HomeAssistant } = require('./ha');
 const SATS = require('./sats');
 const VHF = require('./vhf');
+const { createCache } = require('./cache');
 const Prop = require('./prop');
 const Prefixes = require('./prefixes');
+const Accuracy = require('./accuracy');
 const { HamReference: Reference } = require('./static/reference');
 const { SourceStatus } = require('./status');
 
 const PORT = +(process.env.PORT || 8099);
 const STARTED = new Date().toISOString();
+const DATA_DIR = fs.existsSync('/data') ? '/data' : require('os').tmpdir();
 const STATIC_DIR = path.join(__dirname, 'static');
 const SWPC = 'https://services.swpc.noaa.gov';
 const UA = 'SwampFoxLabs-HamRadioDashboard/0.6 (Home Assistant app; github.com/SWFX2324/swamp-fox-labs-apps)';
@@ -64,36 +67,24 @@ const options = loadOptions();
 
 // ---------------------------------------------------------------- cache / fetch
 
-const cache = new Map();
-const blockedUntil = new Map(); // key -> time before which we don't retry
+// Outside data is cached in memory (bounded), with PSKReporter results and
+// their rate-limit back-off also kept in /data, so restarting the app doesn't
+// refetch them straight away and run into PSKReporter's limit. See cache.js.
+const dataCache = createCache({
+  persist: /^psk-/,
+  persistFile: path.join(DATA_DIR, 'cache.json'),
+  onResult: (key, err) => noteSource(key, err),
+});
+const cached = dataCache.cached;
+const restoredEntries = dataCache.load();
+setInterval(() => dataCache.sweep(), 10 * 60_000).unref();
 
-// Returns the cached value while fresh; refetches once (shared in-flight promise)
-// when stale; on failure keeps serving the stale value and retries in a minute.
-// A source that answers 429 (too many requests) isn't asked again for 15 minutes.
-function cached(key, ttlMs, fn) {
-  const hit = cache.get(key);
-  if (hit && 'v' in hit && Date.now() - hit.t < ttlMs) return Promise.resolve(hit.v);
-  if (hit && hit.p) return hit.p;
-  if (blockedUntil.get(key) > Date.now()) {
-    if (hit && 'v' in hit) return Promise.resolve(hit.v);
-    return Promise.reject(new Error(`${key}: rate limited by the source, retrying later`));
-  }
-  const p = fn()
-    .then(v => { cache.set(key, { t: Date.now(), v }); blockedUntil.delete(key); noteSource(key); return v; })
-    .catch(err => {
-      noteSource(key, err);
-      const wait = err.status === 429 ? 15 * MIN : MIN;
-      if (err.status === 429) blockedUntil.set(key, Date.now() + wait);
-      if (hit && 'v' in hit) {
-        console.warn(`[cache] ${key}: ${err.message} (serving stale)`);
-        cache.set(key, { t: Date.now() - ttlMs + wait, v: hit.v });
-        return hit.v;
-      }
-      cache.delete(key);
-      throw err;
-    });
-  cache.set(key, { ...(hit || {}), p });
-  return p;
+// Home Assistant stops the app with SIGTERM: save the cache first.
+for (const sig of ['SIGTERM', 'SIGINT']) {
+  process.on(sig, () => {
+    dataCache.save();
+    process.exit(0);
+  });
 }
 
 const sourceStatus = new SourceStatus();
@@ -635,16 +626,12 @@ async function resolveTarget(q) {
 const TARGET_QUERY_GAP = 5 * MIN;
 let lastTargetQuery = 0;
 
-function freshCached(key, ttl) {
-  const h = cache.get(key);
-  return h && 'v' in h && Date.now() - h.t < ttl ? h.v : null;
-}
 
 async function pathEvidence(from, to, { extraQuery = true, approximate = false } = {}) {
   const homeField = HamCore.latLonToGrid(from.lat, from.lon).slice(0, 2);
   const farField = HamCore.latLonToGrid(to.lat, to.lon).slice(0, 2);
   const home = await pskArea(homeField).catch(() => null);
-  let far = farField === homeField ? home : freshCached(`psk-area-${farField}`, 5 * MIN);
+  let far = farField === homeField ? home : dataCache.fresh(`psk-area-${farField}`, 5 * MIN);
   let waitUntil = null;
   if (!far && extraQuery) {
     if (Date.now() - lastTargetQuery >= TARGET_QUERY_GAP) {
@@ -694,6 +681,26 @@ function beaconRatings(pos) {
       }),
     };
   });
+}
+
+// ---------------------------------------------------------------- model accuracy log
+
+// Every 15 minutes, compare the model with the long-distance paths PSKReporter
+// shows near the QTH (see accuracy.js). Only uses data the app already fetched,
+// so it adds no PSKReporter traffic, and logs each fetch once.
+const accuracyLog = new Accuracy.AccuracyLog(path.join(DATA_DIR, 'accuracy.jsonl'));
+let lastAccuracyFetch = 0;
+
+async function runAccuracyCheck() {
+  const pos = gridToLatLon(options.grid);
+  if (!pos) return;
+  const area = dataCache.fresh(`psk-area-${HamCore.latLonToGrid(pos.lat, pos.lon).slice(0, 2)}`, 10 * MIN);
+  if (!area || area.fetched === lastAccuracyFetch) return;
+  lastAccuracyFetch = area.fetched;
+  try {
+    const record = Accuracy.check(area.reports, pos, await pathInputs(), Reference.BEACONS);
+    if (Object.keys(record.bands).length) accuracyLog.append(record);
+  } catch (e) { console.warn('[accuracy]', e.message); }
 }
 
 // ---------------------------------------------------------------- saved paths
@@ -1025,7 +1032,6 @@ const DAY = 24 * 60 * MIN;
 // HearHam publishes its whole directory as one free download (~10 MB). We fetch
 // it at most once a day, keep a copy in /data so restarts don't refetch, and
 // filter by distance locally.
-const DATA_DIR = fs.existsSync('/data') ? '/data' : require('os').tmpdir();
 const HEARHAM_FILE = path.join(DATA_DIR, 'hearham-repeaters.json');
 
 function normalizeMode(mode) {
@@ -1361,6 +1367,16 @@ async function api(route, q, res) {
     }
     case '/api/paths':
       return send(res, 200, { paths: readPaths(), max: MAX_SAVED_PATHS });
+    case '/api/accuracy': {
+      const records = accuracyLog.read();
+      return send(res, 200, { week: Accuracy.summarize(records, Date.now() - 7 * DAY), all: Accuracy.summarize(records, 0), dxKm: Accuracy.DX_KM });
+    }
+    case '/api/accuracy.jsonl': {
+      let body = '';
+      try { body = fs.readFileSync(accuracyLog.file); } catch { /* no checks yet */ }
+      res.writeHead(200, { ...SECURITY_HEADERS, 'Content-Type': 'application/x-ndjson', 'Content-Disposition': 'attachment; filename="ham-dashboard-accuracy.jsonl"', 'Cache-Control': 'no-store' });
+      return res.end(body);
+    }
     case '/api/beacons': {
       const lat = num(q.get('lat')), lon = num(q.get('lon'));
       if (lat === null || lon === null || Math.abs(lat) > 90 || Math.abs(lon) > 180) return send(res, 400, { error: 'Set a valid grid square' });
@@ -1518,6 +1534,7 @@ http.createServer(async (req, res) => {
   }
 }).listen(PORT, () => {
   console.log(`[ham-dashboard] listening on :${PORT} (call=${options.callsign || '-'} grid=${options.grid || '-'})`);
+  if (restoredEntries) console.log(`[cache] restored ${restoredEntries} recent PSKReporter result(s) from before the restart`);
   cluster.start(options);
   aprs.start({
     enabled: options.aprs_enabled,
@@ -1536,4 +1553,6 @@ http.createServer(async (req, res) => {
     setTimeout(publishStorm, 15_000);
     setInterval(publishStorm, MIN);
   });
+  setTimeout(runAccuracyCheck, 2 * MIN).unref();
+  setInterval(runAccuracyCheck, 15 * MIN).unref();
 });

@@ -26,7 +26,11 @@ class SourceStatus {
     const s = this.keys.get(key) || {};
     if (err) Object.assign(s, { errorAt: now, error: err.message, limited: err.status === 429 });
     else s.okAt = now;
+    this.keys.delete(key);
     this.keys.set(key, s);
+    // Map order is insertion order, so the first key is the least recently
+    // updated. Keep at most 200 (lookups for new areas add keys over time).
+    if (this.keys.size > 200) this.keys.delete(this.keys.keys().next().value);
   }
 
   // state: 'unused' (not fetched yet), 'ok', 'stale' (a query is failing but

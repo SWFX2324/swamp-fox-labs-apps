@@ -2328,7 +2328,23 @@
     }
   }
 
+  // How often the model agreed with real long-distance paths heard nearby, from
+  // the app's own accuracy log. Shown once there's enough to say something.
+  let accuracyAt = 0;
+  async function loadAccuracy() {
+    if (Date.now() - accuracyAt < 30 * 60000) return;
+    accuracyAt = Date.now();
+    let d;
+    try { d = await api('api/accuracy'); } catch { return; }
+    const w = d.week;
+    const el = $('#propCheck');
+    el.hidden = !(w.sampled >= 20);
+    if (el.hidden) return;
+    el.innerHTML = `<b>Model check</b>, last 7 days: of ${w.sampled.toLocaleString()} real paths over ${fmtDist(d.dxKm)} heard near you, the model rated ${Math.round(w.share * 100)}% fair or good at the time. <a href="api/accuracy.jsonl" download>Download the log</a> (no callsigns) if you’d like to help tune it.`;
+  }
+
   function openProp() {
+    loadAccuracy();
     if (!beacons.data || beacons.key !== station().grid) loadBeacons(); else renderBeacons();
     if (!prop.query) {
       try {
