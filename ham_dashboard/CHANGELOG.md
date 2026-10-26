@@ -13,6 +13,9 @@ Easier to automate, better documented, and tested end to end.
 - **End-to-end tests**: CI now starts the whole server against saved responses
   from every outside service and checks each part of the API, the security rules,
   and that recent data survives a restart. Blueprints are checked in CI too.
+- **AppArmor checked in CI**: every change now builds the real image and runs it
+  under its enforced AppArmor profile, calling every endpoint and failing on any
+  denied access, so a problem like 1.5.0's blocked locale data is caught first.
 - The dashboard now says "app" instead of "add-on", matching Home Assistant.
 
 ## 1.5.2
