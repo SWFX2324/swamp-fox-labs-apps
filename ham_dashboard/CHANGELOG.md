@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.2
+
+- The app now runs on the Alpine 3.24 base image with Node.js 24. Home Assistant
+  stopped updating the Alpine 3.21 base in June 2026, so this keeps the app on a
+  base image that still gets security fixes. Nothing else changes.
+
 ## 1.0.1
 
 Security and polish. No new features, and nothing changes in Home Assistant.
