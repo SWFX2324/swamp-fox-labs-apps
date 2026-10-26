@@ -82,7 +82,24 @@ services see which area you're viewing.
     minutes (mostly FT8/FT4), how many of them were DX (over about 1,550 miles
     away), and the farthest one. Zero can also mean nobody nearby is listening on
     that band. Updated every 5 minutes.
-  - VHF: aurora and sporadic-E status.
+- **VHF openings, 6 m and 2 m** – measured from the same PSKReporter query as
+  "Heard nearby". A band shows as **Open** when monitors within about 500 miles of
+  you decode at least 3 stations, or 2 stations heard by 2 monitors, farther away
+  than normal ground wave and tropo reach: about 500 miles on 6 m (sporadic-E and
+  beyond) and 310 miles on 2 m (tropo ducting and Es). One distant station shows as
+  **Possible**. Meteor scatter (MSK144) is left out, since it reaches those
+  distances on any day.
+  - Each band shows which way the stations are, the farthest one, the likely
+    propagation (sporadic-E, multi-hop, tropo) from the path length, and how long
+    it has been open.
+  - The map draws every long path, from the station heard to the monitor that
+    heard it, and the table lists the longest.
+  - **No reports** means nothing on that band was decoded near you: the band is
+    closed, or nobody close is listening. **Closed** means monitors nearby are
+    decoding only local stations.
+  - An opening ends after two quiet checks in a row (10 minutes), so one quiet
+    check doesn't end it.
+  - HamQSL's global aurora and sporadic-E indicators are shown below.
 - **Station storm safety** – a Safe / Caution / Danger status for your station,
   with a red banner on every tab when it's Danger. It combines:
   - National Weather Service alerts for your grid square (US only). Severe
@@ -232,6 +249,7 @@ add-on's `grid` for anything location-based:
 | `sensor.ham_next_good_pass` | The next pass of any satellite reaching 30° or more |
 | `sensor.ham_pota_nearby` | Number of POTA activators within your POTA alert radius, with the closest ten as an attribute |
 | `sensor.ham_activity_160m` … `sensor.ham_activity_10m` | Stations heard nearby on that band in the last 15 minutes, with DX count and farthest station as attributes |
+| `binary_sensor.ham_6m_open`, `binary_sensor.ham_2m_open` | On while that band is open (see VHF openings), with the status, stations, direction, likely propagation, farthest station and `open_since` as attributes |
 | `binary_sensor.ham_lightning_danger` | On when storm safety is Danger (safety device class), with the reasons as an attribute. Updated every minute. |
 | `sensor.ham_storm_status` | `Safe`, `Caution` or `Danger` |
 | `sensor.ham_nws_alerts` | Number of active NWS alerts for your location, with the list as an attribute |
@@ -245,6 +263,10 @@ It also fires events:
   `pota_alert_radius` (`activator`, `reference`, `park`, `frequency_khz`, `band`,
   `mode`, `distance_km`, `bearing`).
 - `ham_dashboard_storm_danger` when storm safety changes to Danger (`reasons`).
+- `ham_dashboard_vhf_opening` when 6 m or 2 m opens (`band`, `stations`,
+  `receivers`, `toward`, `likely`, `farthest_call`, `farthest_grid`, `farthest_km`,
+  `regions`). It fires at most once an hour per band, and not for an opening
+  already in progress when the app starts.
 
 DX and POTA alerts fire at most once every 30 minutes per station and band.
 
@@ -298,6 +320,20 @@ Replace `notify.mobile_app_your_phone` with your own notify service.
     - action: notify.mobile_app_your_phone
       data:
         message: "10m is open: {{ state_attr('sensor.ham_activity_10m', 'dx_stations') }} DX stations heard nearby, farthest {{ state_attr('sensor.ham_activity_10m', 'farthest_call') }}"
+
+- alias: "6m is open"
+  triggers:
+    - trigger: event
+      event_type: ham_dashboard_vhf_opening
+      event_data:
+        band: 6m
+  actions:
+    - action: notify.mobile_app_your_phone
+      data:
+        message: >-
+          6m is open toward {{ trigger.event.data.toward }}
+          ({{ trigger.event.data.likely }}): {{ trigger.event.data.stations }} stations,
+          farthest {{ trigger.event.data.farthest_call }} {{ trigger.event.data.farthest_grid }}
 
 - alias: "10m is open"
   triggers:
@@ -367,7 +403,7 @@ Replace `notify.mobile_app_your_phone` with your own notify service.
 - [APRS-IS](https://www.aprs2.net/) via `rotate.aprs2.net:14580`, receive-only (live)
 - [POTA](https://pota.app/) activator spots (cached 1 min; polled every 2 min for alerts)
 - [CelesTrak](https://celestrak.org/) amateur satellite elements (cached 12 h)
-- [PSKReporter](https://pskreporter.info/) area query for band activity (one query every 5 minutes, as PSKReporter asks)
+- [PSKReporter](https://pskreporter.info/) area query for band activity and VHF openings (one query every 5 minutes, as PSKReporter asks)
 - [National Weather Service](https://www.weather.gov/documentation/services-web-api) alerts (cached 2 min) and hourly forecast (cached 30 min)
 
 The add-on caches everything server-side, so opening the dashboard on several

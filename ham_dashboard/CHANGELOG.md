@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.9.0
+
+- **VHF openings**: a new card on the Space weather tab shows when 6 m and 2 m are
+  open, measured from PSKReporter: monitors near you decoding stations farther
+  away than ground wave and tropo normally reach. It shows the direction, the
+  farthest station, the likely propagation (sporadic-E, multi-hop or tropo) and how
+  long the band has been open, with a map of the paths and a list of the longest.
+  It uses the same PSKReporter query as "Heard nearby", so it adds no traffic.
+- Home Assistant: new `binary_sensor.ham_6m_open` and `binary_sensor.ham_2m_open`,
+  and a `ham_dashboard_vhf_opening` event when a band opens.
+- **Prebuilt images**: installs and updates now download a ready image from GitHub
+  Container Registry instead of building on your machine, which is much faster on
+  a Raspberry Pi.
+- Every change is now checked automatically: Home Assistant's app linter, a syntax
+  check and unit tests for the grid, sun and band math, the APRS parser and the
+  VHF opening detection.
+
 ## 0.8.1
 
 - Fixed: the tour and setup boxes couldn't be clicked when they sat over a map (the

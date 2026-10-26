@@ -1,8 +1,9 @@
 name: Ham Radio Dashboard
-version: "0.8.1"
+version: "0.9.0"
 slug: ham_dashboard
 description: Band conditions, space weather, MUF maps and DX spots for amateur radio operators
 url: https://github.com/SWFX2324/swamp-fox-labs-apps/tree/main/ham_dashboard
+image: ghcr.io/swfx2324/ham-dashboard-{arch}
 arch:
   - aarch64
   - amd64

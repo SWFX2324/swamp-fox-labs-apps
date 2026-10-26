@@ -15,11 +15,20 @@ Home Assistant apps (add-ons) by Swamp Fox Labs, KR4FCD.
 
 Requires Home Assistant OS or a Supervised install (amd64 or aarch64).
 
+Images are prebuilt for both architectures, so installs and updates download a
+ready image instead of building one on your machine.
+
 ## Apps
 
 | | App | Description |
 | --- | --- | --- |
-| <img src="ham_dashboard/icon.png" width="40"> | [Ham Radio Dashboard](ham_dashboard) | HF band conditions (160–10 m), NOAA R/S/G scales, SFI, sunspots, K/A index, gray line and MUF maps, DX cluster spots, PSKReporter and NOAA alerts, plus nearby repeaters, live APRS, POTA spots, satellite passes, QRZ/FCC callsign lookup, measured band activity, storm safety, and Home Assistant sensors and alerts. |
+| <img src="ham_dashboard/icon.png" width="40"> | [Ham Radio Dashboard](ham_dashboard) | HF band conditions (160–10 m), NOAA R/S/G scales, SFI, sunspots, K/A index, gray line and MUF maps, DX cluster spots, PSKReporter and NOAA alerts, plus nearby repeaters, live APRS, POTA spots, satellite passes, QRZ/FCC callsign lookup, measured band activity, 6 m and 2 m openings, storm safety, and Home Assistant sensors and alerts. |
+
+<p>
+  <img src="docs/screenshot-weather.png" alt="Space weather view: solar conditions, storm safety, NOAA scales and HF band conditions" width="66%">
+  <img src="docs/screenshot-phone.png" alt="The dashboard on a phone" width="24%">
+</p>
+<img src="docs/screenshot-sats.png" alt="Satellites view: upcoming passes, sky track and Doppler" width="66%">
 
 ## Developing
 
@@ -30,7 +39,26 @@ is one Node.js file with no dependencies. To run it outside Home Assistant:
 CALLSIGN=N0CALL GRID=DM14xd PORT=8099 node ham_dashboard/app/server.js
 ```
 
-Then open http://localhost:8099.
+Then open http://localhost:8099. Run the unit tests with:
+
+```bash
+node --test "ham_dashboard/tests/*.test.js"
+```
+
+### Releases
+
+Every push to `main` that touches `ham_dashboard/` runs two GitHub Actions:
+
+- **Checks** (on every push and pull request): Home Assistant's app linter, a syntax
+  check of every script and the unit tests.
+- **Build images**: builds `ghcr.io/swfx2324/ham-dashboard-amd64` and
+  `ham-dashboard-aarch64`, tagged with the version in `config.yaml` and `latest`.
+  Pull requests and other branches only build, so a released version's image is
+  never replaced by unreleased code.
+
+Home Assistant offers an update as soon as `config.yaml` on `main` has a new
+version, and the images take a few minutes to build. An update started in that
+window fails with "image not found"; it works once the build finishes.
 
 ## License
 

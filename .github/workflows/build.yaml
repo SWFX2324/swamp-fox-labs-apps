@@ -1,0 +1,75 @@
+# Builds the app's container image for each architecture and publishes it to
+# GitHub Container Registry, so Home Assistant downloads a ready image instead
+# of building one on the user's machine. Pull requests and other branches only
+# build, so a released version's image is never replaced by unreleased code.
+name: Build images
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ham_dashboard/**
+      - .github/workflows/build.yaml
+  pull_request:
+    paths:
+      - ham_dashboard/**
+      - .github/workflows/build.yaml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    name: ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+            platform: linux/amd64
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+            platform: linux/arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version
+        id: info
+        run: |
+          version=$(sed -n 's/^version: *"\{0,1\}\([^"]*\)"\{0,1\} *$/\1/p' ham_dashboard/config.yaml)
+          test -n "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/ham-dashboard-${{ matrix.arch }}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: ham_dashboard
+          platforms: ${{ matrix.platform }}
+          push: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+          build-args: BUILD_VERSION=${{ steps.info.outputs.version }}
+          labels: |
+            io.hass.type=addon
+            io.hass.name=Ham Radio Dashboard
+            io.hass.version=${{ steps.info.outputs.version }}
+            io.hass.arch=${{ matrix.arch }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.info.outputs.version }}
+          tags: |
+            ${{ steps.info.outputs.image }}:${{ steps.info.outputs.version }}
+            ${{ steps.info.outputs.image }}:latest
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}

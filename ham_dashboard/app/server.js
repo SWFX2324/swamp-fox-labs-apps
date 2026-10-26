@@ -11,6 +11,7 @@ const { AprsIs } = require('./aprs');
 const HamCore = require('./static/hamcore');
 const { HomeAssistant } = require('./ha');
 const SATS = require('./sats');
+const VHF = require('./vhf');
 
 const PORT = +(process.env.PORT || 8099);
 const STATIC_DIR = path.join(__dirname, 'static');
@@ -547,6 +548,27 @@ async function bandActivity(pos) {
   return { field, windowMin: ACTIVITY_WINDOW_MIN, radiusKm: ACTIVITY_RADIUS_KM, dxKm: DX_KM, fetched: new Date(fetched).toISOString(), bands };
 }
 
+// ---------------------------------------------------------------- VHF openings (same PSKReporter query)
+
+const vhfTracker = new VHF.OpeningTracker((band, b) => {
+  if (!ha.enabled) return;
+  ha.fireEvent('ham_dashboard_vhf_opening', {
+    band, stations: b.stations, receivers: b.receivers, toward: b.toward, likely: b.likely,
+    farthest_call: b.farthest?.call ?? null, farthest_grid: b.farthest?.grid ?? null, farthest_km: b.farthest?.km ?? null,
+    regions: b.regions.map(r => r.field), time: new Date().toISOString(),
+  });
+});
+
+// Openings are tracked over time only for the configured QTH; another grid
+// (a browser override) just gets the current snapshot.
+async function vhfOpenings(pos) {
+  const field = HamCore.latLonToGrid(pos.lat, pos.lon).slice(0, 2);
+  const { fetched, reports } = await pskArea(field);
+  const result = { field, windowMin: ACTIVITY_WINDOW_MIN, fetched: new Date(fetched).toISOString(), ...VHF.analyze(reports, pos) };
+  const qth = gridToLatLon(options.grid);
+  return qth && distanceKm(qth, pos) < 10 ? vhfTracker.update(fetched, result) : result;
+}
+
 // ---------------------------------------------------------------- storm safety (NWS + local lightning sensor)
 
 // NWS events that mean "lightning is here or imminent" vs "be ready".
@@ -767,6 +789,19 @@ async function haEntities() {
         });
       }
     } catch (e) { console.warn('[ha] activity:', e.message); }
+
+    try {
+      const vhf = await vhfOpenings(pos);
+      for (const [band, b] of Object.entries(vhf.bands)) {
+        out.push([`binary_sensor.ham_${band}_open`, b.active ? 'on' : 'off', {
+          friendly_name: `${band} opening`, icon: 'mdi:antenna',
+          status: b.status[0].toUpperCase() + b.status.slice(1), stations: b.stations, receivers: b.receivers,
+          toward: b.toward || null, likely: b.likely || null, open_since: b.openSince,
+          farthest_call: b.farthest?.call ?? null, farthest_km: b.farthest?.km ?? null,
+          regions: b.regions.map(r => r.field), window_min: vhf.windowMin,
+        }]);
+      }
+    } catch (e) { console.warn('[ha] vhf:', e.message); }
   }
   return out;
 }
@@ -1075,6 +1110,11 @@ async function api(route, q, res) {
       const lat = num(q.get('lat')), lon = num(q.get('lon'));
       if (lat === null || lon === null || Math.abs(lat) > 90 || Math.abs(lon) > 180) return send(res, 400, { error: 'Set a valid grid square' });
       return send(res, 200, await bandActivity({ lat, lon }));
+    }
+    case '/api/vhf': {
+      const lat = num(q.get('lat')), lon = num(q.get('lon'));
+      if (lat === null || lon === null || Math.abs(lat) > 90 || Math.abs(lon) > 180) return send(res, 400, { error: 'Set a valid grid square' });
+      return send(res, 200, await vhfOpenings({ lat, lon }));
     }
     case '/api/storm':
       return send(res, 200, await stormSafety());

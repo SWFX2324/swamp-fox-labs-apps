@@ -6,9 +6,13 @@ A read-only propagation and space-weather dashboard for amateur radio operators,
 in its own Home Assistant sidebar panel. It works on phones and desktops, in light
 and dark mode.
 
+![Space weather view](https://raw.githubusercontent.com/SWFX2324/swamp-fox-labs-apps/main/docs/screenshot-weather.png)
+
 - HF band conditions, 160 m – 10 m: N0NBH/HamQSL ratings plus a local estimate from
   the nearest ionosonde, and measured activity heard nearby
   from PSKReporter
+- **VHF openings**: 6 m and 2 m openings measured from PSKReporter, with a map of
+  the long-distance paths heard near you and a Home Assistant alert when a band opens
 - Station storm safety from NWS alerts and an optional lightning sensor, with a
   Home Assistant sensor that can disconnect your antennas
 - NOAA R/S/G scales, SFI, sunspot number, K/A index, X-ray flux, solar wind and Bz

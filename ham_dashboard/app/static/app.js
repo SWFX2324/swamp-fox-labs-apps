@@ -235,7 +235,118 @@
       note += `“Heard nearby” is measured: distinct stations that PSKReporter monitors within ${fmtDist(act.radiusKm)} of you decoded in the last ${act.windowMin} minutes (mostly FT8/FT4), with how many were DX (over ${fmtDist(act.dxKm)} away). Zero can also mean nobody nearby is listening on that band.`;
     }
     $('#bandsNote').textContent = note;
+  }
 
+  // ------------------------------------------------------------ VHF openings
+
+  const VHF_INFO = { '6m': { label: '6 m', mhz: '50 MHz', series: '--series-1' }, '2m': { label: '2 m', mhz: '144 MHz', series: '--series-2' } };
+  const VHF_STATUS = { open: ['good', 'Open'], possible: ['fair', 'Possible'], closed: ['closed', 'Closed'], quiet: ['none', 'No reports'] };
+
+  function vhfTile(band, b) {
+    const info = VHF_INFO[band];
+    // A band stays "open" through one quiet poll so a short gap doesn't end the opening.
+    const [cls, label] = VHF_STATUS[b.active && b.status !== 'open' ? 'open' : b.status];
+    const lines = [];
+    if (b.stations) {
+      lines.push(`${b.stations} station${b.stations === 1 ? '' : 's'} past ${fmtDist(b.minKm)}${b.toward ? ` · toward ${esc(b.toward)}` : ''}`);
+      if (b.farthest) lines.push(`Farthest <span class="mono">${esc(b.farthest.call)}</span> (${esc(b.farthest.grid.slice(0, 4))}), ${fmtDist(b.farthest.km)}`);
+      if (b.likely) lines.push(`Likely ${esc(b.likely)}`);
+    } else if (b.status === 'closed') {
+      lines.push(`${b.monitors} monitor${b.monitors === 1 ? '' : 's'} nearby, only local paths`);
+    } else {
+      lines.push('Nothing decoded nearby: closed, or nobody close is listening');
+    }
+    if (b.openSince) lines.push(`Open since ${localHM(new Date(b.openSince))}`);
+    return `<div class="tile" style="--c:var(${info.series})">
+      <span class="label"><span class="sw"></span>${info.label} <span class="meta">${info.mhz}</span></span>
+      <span class="value">${pill(cls, label)}</span>
+      ${lines.map(l => `<span class="sub">${l}</span>`).join('')}
+    </div>`;
+  }
+
+  function renderVhf() {
+    const v = state.vhf;
+    const pos = gridToLatLon(station().grid);
+    $('#vhfMeta').textContent = v ? `Updated ${ago(v.fetched)}` : '';
+    if (!pos) {
+      $('#vhfBands').innerHTML = '<p class="empty">Set your grid square to see VHF openings near you.</p>';
+    } else if (!v) {
+      $('#vhfBands').innerHTML = '<p class="empty">Loading…</p>';
+    } else {
+      $('#vhfBands').innerHTML = Object.entries(v.bands).map(([band, b]) => vhfTile(band, b)).join('');
+    }
+    const paths = v ? Object.entries(v.bands).flatMap(([band, b]) => b.paths.map(p => ({ band, ...p }))).sort((a, b) => b.km - a.km) : [];
+    const seen = new Set();
+    const rows = paths.filter(p => !seen.has(p.band + p.tx) && seen.add(p.band + p.tx)).slice(0, 10);
+    $('#vhfPaths').innerHTML = rows.length
+      ? `<thead><tr><th>Band</th><th>Heard</th><th>By</th><th>Distance</th><th>Mode</th></tr></thead><tbody>${rows.map(p => `<tr>
+          <td>${VHF_INFO[p.band].label}</td>
+          <td><span class="mono">${esc(p.tx)}</span> <span class="meta">${esc(p.txGrid.slice(0, 4))}</span></td>
+          <td class="mono">${esc(p.rx)}</td><td>${fmtDist(p.km)}</td><td>${esc(p.mode)}</td></tr>`).join('')}</tbody>`
+      : v ? `<tbody><tr><td class="empty">No long-distance 6 m or 2 m paths heard near you in the last ${v.windowMin} minutes.</td></tr></tbody>` : '';
+    $('#vhfNote').textContent = v
+      ? `Measured from PSKReporter: stations decoded in the last ${v.windowMin} minutes by monitors within ${fmtDist(v.nearKm)} of you, over paths longer than normal ground wave and tropo reach (${fmtDist(v.bands['6m'].minKm)} on 6 m, ${fmtDist(v.bands['2m'].minKm)} on 2 m). Meteor scatter (MSK144) is left out. “Open” means at least 3 distant stations, or 2 heard by 2 monitors. Most reports are FT8, so an opening often shows here before it’s heard on SSB.`
+      : '';
+    renderVhfStrip();
+    drawVhfMap();
+  }
+
+  function drawVhfMap() {
+    const el = $('#vhfMap');
+    if (!el.offsetWidth) return;
+    if (maps.vhf?.hover) { maps.vhf.pending = () => drawVhfMap(); return; }
+    const here = gridToLatLon(station().grid);
+    const v = state.vhf;
+    const ends = [];
+    // Frame you and every station heard, so the map isn't half empty. Reads
+    // the latest draw's stations, since the home button keeps this function.
+    const fit = () => {
+      const mv = maps.vhf, pts = mv.ends || [];
+      const qth = gridToLatLon(station().grid);
+      if (!qth) { mv.map.setView([39, -98], 3); return true; }
+      if (!pts.length) return fitRadius(mv, qth, 1500);
+      mv.map.invalidateSize();
+      if (!mv.map.getSize().y) {
+        requestAnimationFrame(() => { if (mv.map.getSize().y) fit(); });
+        return false;
+      }
+      mv.map.fitBounds(L.latLngBounds([ll(qth), ...pts.map(ll)]).pad(0.12), { padding: [12, 12], maxZoom: 7 });
+      return true;
+    };
+    const m = makeMap('vhf', el, { world: true, home: fit });
+    m.ends = ends;
+    // Leaflet needs a view before lines can be added; the real fit comes after.
+    if (!m.fitKey) m.map.setView(here ? ll(here) : [39, -98], 4);
+    m.group.clearLayers();
+    m.labels = [];
+    for (const [band, b] of Object.entries(v?.bands || {})) {
+      const color = css(VHF_INFO[band].series);
+      const txSeen = new Set();
+      for (const p of b.paths) {
+        const tx = gridToLatLon(p.txGrid), rx = gridToLatLon(p.rxGrid);
+        if (!tx || !rx) continue;
+        ends.push(tx);
+        L.polyline(greatCircle(rx, tx, 24).map(q => [q.lat, q.lon]), { color, weight: 1.5, opacity: 0.6, interactive: false }).addTo(m.group);
+        dot(rx, color, { radius: 3, hollow: true }).bindTooltip(`<b class="mono">${esc(p.rx)}</b> monitor${tipRow('Grid', esc(p.rxGrid))}`, TIP).addTo(m.group);
+        if (txSeen.has(p.tx)) continue;
+        txSeen.add(p.tx);
+        dot(tx, color, { radius: 4.5 })
+          .bindTooltip(`<b class="mono">${esc(p.tx)}</b> on ${VHF_INFO[band].label}<br>${esc(p.country)}${tipRow('Grid', esc(p.txGrid))}${tipRow('Heard by', `<span class="mono">${esc(p.rx)}</span>`)}${tipRow('Path', fmtDist(p.km))}${tipRow('Mode', esc(p.mode))}${here ? tipRow('From you', `${fmtDist(distanceKm(here, tx))} ${compass(bearingDeg(here, tx))}`) : ''}`, TIP)
+          .addTo(m.group);
+      }
+    }
+    if (here) qthMarker(here, `<b class="mono">${esc(station().callsign || 'Your QTH')}</b>`).addTo(m.group);
+    const fitKey = `${station().grid}|${ends.length ? 'paths' : 'none'}`;
+    if (m.fitKey !== fitKey && fit() !== false) m.fitKey = fitKey;
+    $('#vhfLegend').innerHTML = legendKey(`border:2px solid ${css('--text')};border-radius:50%`, 'Your QTH') +
+      legendKey(`background:${css('--series-1')};border-radius:50%`, '6 m station') +
+      legendKey(`background:${css('--series-2')};border-radius:50%`, '2 m station') +
+      legendKey(`border:2px solid ${css('--muted')};border-radius:50%`, 'Hollow = monitor that heard it');
+  }
+
+  // HamQSL's global VHF indicators.
+  function renderVhfStrip() {
+    const h = state.solar?.hamqsl;
     const VHF_LABEL = {
       'vhf-aurora|northern_hemi': 'Aurora (N. hemisphere)',
       'E-Skip|north_america': '2 m Es · N. America',
@@ -982,6 +1093,7 @@
   function redrawVisible() {
     if (currentView === 'weather') {
       if (!$('#panel-grayline').hidden) { refreshMapSize('grayline'); drawGrayline(); }
+      refreshMapSize('vhf'); drawVhfMap();
       renderKp(); renderCycle();
     } else if (currentView === 'repeaters') {
       refreshMapSize('repeaters');
@@ -2240,6 +2352,8 @@
     fillRadiusOptions();
     fillPotaRanges();
     state.activity = null;
+    state.vhf = null;
+    renderVhf();
     loadActivity();
     renderStorm();
     rpt.key = '';
@@ -2255,13 +2369,18 @@
   async function loadSolar() {
     try {
       state.solar = await api('api/solar');
-      renderTiles(); renderScales(); renderBands(); renderKp(); renderAlerts();
+      renderTiles(); renderScales(); renderBands(); renderVhfStrip(); renderKp(); renderAlerts();
     } catch (e) { console.warn(e); }
   }
   async function loadActivity() {
     const pos = gridToLatLon(station().grid);
     if (!pos) return;
-    try { state.activity = await api(`api/activity?lat=${pos.lat.toFixed(4)}&lon=${pos.lon.toFixed(4)}`); renderBands(); } catch (e) { console.warn(e); }
+    const q = `lat=${pos.lat.toFixed(4)}&lon=${pos.lon.toFixed(4)}`;
+    // Both come from the same cached PSKReporter query on the server.
+    await Promise.all([
+      api(`api/activity?${q}`).then(a => { state.activity = a; renderBands(); }),
+      api(`api/vhf?${q}`).then(v => { state.vhf = v; renderVhf(); }),
+    ].map(x => x.catch(e => console.warn(e))));
   }
   async function loadIono() {
     try { state.iono = await api('api/ionosondes'); renderBands(); drawGrayline(); } catch (e) { console.warn(e); }

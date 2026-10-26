@@ -1,0 +1,33 @@
+# Checks every push and pull request: Home Assistant's app linter on
+# config.yaml, a syntax check of every script, and the unit tests.
+name: Checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: App linter
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: frenck/action-addon-linter@v2
+        with:
+          path: ./ham_dashboard
+
+  test:
+    name: Syntax and unit tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax check
+        run: for f in $(find ham_dashboard/app -name '*.js' -not -path '*/lib/*'); do node --check "$f" || exit 1; done
+      - name: Unit tests
+        run: node --test "ham_dashboard/tests/*.test.js"
