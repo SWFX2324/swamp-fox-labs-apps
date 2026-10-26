@@ -589,12 +589,19 @@ devices doesn't multiply the requests to these free services.
 - **Restarts.** PSKReporter results and any rate-limit back-off are kept in the
   app's storage, so restarting or updating the app doesn't refetch them straight
   away (PSKReporter asks clients to query at most every 5 minutes).
-- **AppArmor.** The app ships its own AppArmor profile, at first in *complain* mode:
-  nothing is blocked, but anything outside the profile is logged. If you'd like to
-  help, after a day or two run this in the SSH & Web Terminal app and send any
-  lines it prints:
-  `journalctl _TRANSPORT="audit" -g 'apparmor="ALLOWED"' | grep ham_dashboard`.
-  A later release switches the profile to enforce.
+- **AppArmor.** The app ships its own enforced AppArmor profile: it can only read
+  its own code, write to its own storage, and make network connections, and
+  anything else is blocked. Settings → **Data sources and connections** shows the
+  profile the app is running under. If something ever fails and you suspect
+  AppArmor, run this in the Terminal & SSH app and include the output in a bug
+  report:
+  `ha host logs --lines 20000 | grep 'apparmor="DENIED"' | grep ham_dashboard`.
+- **Signed images.** Every published image is signed with Cosign, keyless, by this
+  repository's build workflow. To check an image came from here:
+  `cosign verify ghcr.io/swfx2324/ham-dashboard-amd64:1.5.0 --certificate-identity
+  https://github.com/SWFX2324/swamp-fox-labs-apps/.github/workflows/build.yaml@refs/heads/main
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com`
+  (use `ham-dashboard-aarch64` on a Raspberry Pi, and your installed version).
 - **Security and privacy.** The dashboard only accepts connections from Home
   Assistant's ingress proxy, so it's reachable only through the sidebar, by
   Home Assistant administrators. Your QRZ password stays in the app's

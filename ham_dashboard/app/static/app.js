@@ -214,7 +214,7 @@
     if (!a) return '<span class="meta">—</span>';
     if (!a.stations) return '<span class="meta">0</span>';
     const title = a.farthest ? `Farthest: ${a.farthest.call} (${a.farthest.country || a.farthest.grid}), ${fmtDist(a.farthest.km)}` : '';
-    return `<span class="mono" title="${esc(title)}">${a.stations}</span><div class="sub">${a.dx ? `${a.dx} DX` : 'local'}${a.farthest ? ` · ${fmtDist(a.farthest.km)}` : ''}</div>`;
+    return `<span class="mono" title="${esc(title)}">${a.stations}</span><div class="sub">${a.dx ? `${esc(a.dx)} DX` : 'local'}${a.farthest ? ` · ${fmtDist(a.farthest.km)}` : ''}</div>`;
   }
 
   function renderBands() {
@@ -324,7 +324,7 @@
     }
     if (b.openSince) lines.push(`Open since ${clockHM(new Date(b.openSince))}`);
     return `<div class="tile" style="--c:var(${info.series})">
-      <span class="label"><span class="sw"></span>${info.label} <span class="meta">${info.mhz}</span></span>
+      <span class="label"><span class="sw"></span>${esc(info.label)} <span class="meta">${info.mhz}</span></span>
       <span class="value">${pill(cls, label)}</span>
       ${lines.map(l => `<span class="sub">${l}</span>`).join('')}
     </div>`;
@@ -425,7 +425,8 @@
     };
     $('#vhf').innerHTML = (h?.vhf || []).map(v => {
       const open = !/closed/i.test(v.status);
-      return `<span class="item">${esc(VHF_LABEL[`${v.name}|${v.location}`] || `${v.name} ${v.location}`)} ${pill(open ? 'good' : 'closed', open ? v.status : 'Closed')}</span>`;
+      const label = VHF_LABEL[`${v.name}|${v.location}`] || `${v.name} ${v.location}`;
+      return `<span class="item">${esc(label)} ${pill(open ? 'good' : 'closed', open ? v.status : 'Closed')}</span>`;
     }).join('');
   }
 
@@ -2386,11 +2387,11 @@
       const s = d?.stations.find(x => x.call === st.call);
       const best = s && bestTimeFreq(s);
       return `<div class="tile time-tile">
-        <span class="label"><button type="button" class="call-link mono" data-timesig="${st.call}" title="Analyze the path to ${st.call}">${st.call}</button> <span class="meta">${esc(st.place)}</span></span>
+        <span class="label"><button type="button" class="call-link mono" data-timesig="${esc(st.call)}" title="Analyze the path to ${esc(st.call)}">${esc(st.call)}</button> <span class="meta">${esc(st.place)}</span></span>
         <span class="value">${best ? `${best.mhz} MHz` : s ? 'None open' : '—'}</span>
         <span class="sub">${best ? `Best now · ${RATING_LABEL[best.now]}` : s ? 'No frequency rated fair or better right now' : ''}</span>
         <span class="sub">${s ? `${fmtDist(s.km)} · ${s.bearing}° ${compass(s.bearing)}` : ''}</span>
-        <span class="sub time-alert" data-alert="${st.call}">${alertText(st)}</span>
+        <span class="sub time-alert" data-alert="${esc(st.call)}">${alertText(st)}</span>
       </div>`;
     }).join('');
     if (!d) { $('#timeGrid').innerHTML = ''; return; }
@@ -2401,8 +2402,12 @@
       return `<th scope="col" title="${esc(clockDayHour(t))}">${hr % 3 === 0 || i === 0 ? esc(clockHour(t)) : ''}</th>`;
     }).join('');
     const cell = (r, when) => `<td class="r-${r}" title="${esc(`${when}: ${RATING_LABEL[r]}`)}"><span class="sr-only">${RATING_LABEL[r]}</span></td>`;
-    const rows = d.stations.flatMap(s => [...s.freqs].reverse().map(f => `<tr><th scope="row">${s.call} <span class="mono">${f.mhz}</span></th>${
-      cell(f.now, `${s.call} ${f.mhz} MHz now`)}<td class="gap"></td>${f.hours.map((r, i) => cell(r, `${s.call} ${f.mhz} MHz · ${clockDayHour(hours[i])}`)).join('')}</tr>`)).join('');
+    const rows = d.stations.flatMap(s => [...s.freqs].reverse().map(f => {
+      // cell() escapes its title, so the name goes in plain.
+      const name = `${s.call} ${f.mhz} MHz`;
+      const later = f.hours.map((r, i) => cell(r, `${name} · ${clockDayHour(hours[i])}`)).join('');
+      return `<tr><th scope="row">${esc(s.call)} <span class="mono">${f.mhz}</span></th>${cell(f.now, `${name} now`)}<td class="gap"></td>${later}</tr>`;
+    })).join('');
     $('#timeGrid').innerHTML = `<thead><tr><th></th><th scope="col">Now</th><th class="gap"></th>${head}</tr></thead><tbody>${rows}</tbody>`;
     $('#timeLegend').innerHTML = ['good', 'fair', 'poor', 'closed'].map(r => legendKey('', RATING_LABEL[r]).replace('<span class="sw" style="">', `<span class="sw r-${r}">`)).join('');
   }
@@ -3130,7 +3135,7 @@
       const sub = [x.ok && `Updated ${ago(x.ok)}`, x.state !== 'ok' && x.error && `${x.error} (${ago(x.errorAt)})`].filter(Boolean).join(' · ');
       return { name: x.name, cls, label, sub };
     });
-    const { cluster, aprs, ha } = s.live;
+    const { cluster, aprs, ha, apparmor } = s.live;
     const live = [
       { name: 'DX cluster', ...pillOf(LIVE_PILL[cluster.status]), sub: [cluster.host, cluster.status === 'connected' && `${cluster.spots} spots`, cluster.error].filter(Boolean).join(' · ') },
       { name: 'APRS-IS', ...pillOf(LIVE_PILL[aprs.status]), sub: [aprs.server, aprs.status === 'connected' && `${aprs.stations} stations, ${aprs.packets} packets`, aprs.error].filter(Boolean).join(' · ') },
@@ -3140,6 +3145,13 @@
         sub: [ha.enabled && `${ha.entities ?? 0} entities`, ha.lastPublish && `published ${ago(ha.lastPublish)}`, ha.error].filter(Boolean).join(' · '),
       },
     ];
+    // enforce = confined and blocking; complain = confined but only logging.
+    const mode = /\((enforce|complain|kill|unconfined)\)/.exec(apparmor || '')?.[1];
+    live.push({
+      name: 'AppArmor',
+      ...pillOf(!apparmor ? ['none', 'Not available'] : mode === 'enforce' ? ['good', 'Enforced'] : mode === 'complain' ? ['fair', 'Logging only'] : ['poor', 'Not confined']),
+      sub: apparmor || 'Only inside Home Assistant',
+    });
     return [...src, ...live];
   }
   function pillOf(p) { const [cls, label] = p || ['none', '—']; return { cls, label }; }

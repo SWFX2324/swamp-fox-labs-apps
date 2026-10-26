@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.5.0
+
+Security.
+
+- **AppArmor is now enforced.** The profile that ran in complain mode since 1.2.0
+  (with nothing logged on a real install) now blocks anything outside it: the app
+  can only read its own code, write to its own storage, and make network
+  connections. Settings → **Data sources and connections** shows the profile the
+  app is running under.
+- **Signed images.** Published images are signed with Cosign by the build
+  workflow (keyless, tied to this repository), and the workflow verifies each
+  signature. The documentation shows how to check one yourself.
+- **Automatic escaping check.** A new test fails if dashboard code ever puts data
+  from outside the app (APRS comments, cluster spots, QRZ records and so on) into
+  the page without escaping it. A few spots that showed the app's own text are now
+  escaped too, so the rule has no exceptions.
+- Fixed the documented command for checking AppArmor's log: `journalctl` isn't
+  available in the Terminal & SSH app; the docs now use `ha host logs`.
+
 ## 1.4.0
 
 Easier to use and to find your way around.

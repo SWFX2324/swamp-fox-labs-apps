@@ -1416,6 +1416,12 @@ async function api(route, q, res) {
       return send(res, 200, await beaconRatings({ lat, lon }));
     }
     case '/api/status': {
+      // The AppArmor profile this process runs under, for example
+      // "d0e1ec98_ham_dashboard//node (enforce)". Null where there's no AppArmor.
+      let apparmor = null;
+      for (const f of ['/proc/self/attr/apparmor/current', '/proc/self/attr/current']) {
+        try { apparmor = fs.readFileSync(f, 'utf8').replace(/\0/g, '').trim() || null; break; } catch { /* not on this system */ }
+      }
       const a = aprs.snapshot();
       return send(res, 200, {
         version: process.env.APP_VERSION || 'dev',
@@ -1426,6 +1432,7 @@ async function api(route, q, res) {
           cluster: { status: cluster.status, host: options.dx_cluster_host, error: cluster.error ?? null, spots: cluster.spots.length },
           aprs: { status: a.status, server: a.server ?? null, error: a.error ?? null, stations: a.stations.length, packets: a.packets },
           ha: ha.status(),
+          apparmor,
         },
       });
     }

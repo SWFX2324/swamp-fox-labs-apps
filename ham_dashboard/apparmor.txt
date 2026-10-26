@@ -2,12 +2,13 @@
 
 # AppArmor profile for Ham Radio Dashboard.
 #
-# Shipped in complain mode first: nothing is blocked, but anything outside this
-# profile is logged as apparmor="ALLOWED". Once real installs run without such
-# entries, the complain flags are removed and the profile is enforced. To check:
-#   journalctl _TRANSPORT="audit" -g 'apparmor="ALLOWED"' | grep ham_dashboard
+# Enforced: anything outside this profile is blocked and logged as
+# apparmor="DENIED". It ran in complain mode in 1.2.0 to 1.4.0 with no
+# apparmor="ALLOWED" entries on a real install. To check from the Terminal & SSH
+# app:
+#   ha host logs --lines 20000 | grep 'apparmor="DENIED"' | grep ham_dashboard
 
-profile ham_dashboard flags=(attach_disconnected,mediate_deleted,complain) {
+profile ham_dashboard flags=(attach_disconnected,mediate_deleted) {
   #include <abstractions/base>
 
   # Capabilities
@@ -32,7 +33,7 @@ profile ham_dashboard flags=(attach_disconnected,mediate_deleted,complain) {
   # The app itself runs in its own, narrower profile
   /usr/bin/node cx -> node,
 
-  profile node flags=(attach_disconnected,mediate_deleted,complain) {
+  profile node flags=(attach_disconnected,mediate_deleted) {
     #include <abstractions/base>
 
     # Stop signals from S6-Overlay
