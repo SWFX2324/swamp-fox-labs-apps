@@ -49,7 +49,7 @@ your QRZ username and password there too if you want worldwide callsign lookups.
 See the **Documentation** tab for details.
 
 Data from N0NBH/HamQSL, NOAA SWPC, KC2G, PSKReporter, HearHam, APRS-IS, POTA,
-CelesTrak, the National Weather Service, OpenStreetMap, USGS The National Map, QRZ.com, callook.info and the VE7CC DX cluster. The world outline comes
+CelesTrak, the National Weather Service, OpenStreetMap, USGS The National Map, QRZ.com, callook.info and the W3LPL, VE7CC and NC7J DX clusters. The world outline comes
 from [world-atlas](https://github.com/topojson/world-atlas) (Natural Earth, public
 domain).
 
