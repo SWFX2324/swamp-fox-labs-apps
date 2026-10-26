@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.1
+
+- Fixed: when PSKReporter couldn't be reached (for example rate limiting right after
+  the app restarts), the VHF openings card was left blank. It now says why and that
+  it will fill in once PSKReporter answers, and the band table's note explains an
+  empty "Heard nearby" column the same way.
+
 ## 1.1.0
 
 New:

@@ -248,7 +248,9 @@
     } else {
       note += 'Set your grid square for a local estimate. ';
     }
-    if (act) {
+    if (!act && state.activityError) {
+      note += `“Heard nearby” needs PSKReporter, which isn’t available right now: ${sourceReason(state.activityError)}. It fills in once PSKReporter answers.`;
+    } else if (act) {
       note += `“Heard nearby” is measured: distinct stations that PSKReporter monitors within ${fmtDist(act.radiusKm)} of you decoded in the last ${act.windowMin} minutes (mostly FT8/FT4), with how many were DX (over ${fmtDist(act.dxKm)} away). Zero can also mean nobody nearby is listening on that band.`;
     }
     $('#bandsNote').textContent = note;
@@ -295,6 +297,9 @@
 
   // ------------------------------------------------------------ VHF openings
 
+  // Rate-limit errors in plain words; anything else as the server said it.
+  const sourceReason = msg => (/429|rate limit/i.test(msg || '') ? 'it’s asking the app to slow down' : msg);
+
   const VHF_INFO = { '6m': { label: '6 m', mhz: '50 MHz', series: '--series-1' }, '2m': { label: '2 m', mhz: '144 MHz', series: '--series-2' } };
   const VHF_STATUS = { open: ['good', 'Open'], possible: ['fair', 'Possible'], closed: ['closed', 'Closed'], quiet: ['none', 'No reports'] };
 
@@ -326,6 +331,9 @@
     $('#vhfMeta').textContent = v ? `Updated ${ago(v.fetched)}` : '';
     if (!pos) {
       $('#vhfBands').innerHTML = '<p class="empty">Set your grid square to see VHF openings near you.</p>';
+    } else if (!v && state.vhfError) {
+      // The card still draws when PSKReporter can't be reached, and says why.
+      $('#vhfBands').innerHTML = `<p class="empty">VHF openings need PSKReporter, which isn’t available right now: ${esc(sourceReason(state.vhfError))}. The app retries on its own; this fills in once PSKReporter answers.</p>`;
     } else if (!v) {
       $('#vhfBands').innerHTML = '<p class="empty">Loading…</p>';
     } else {
@@ -2993,10 +3001,13 @@
     if (!pos) return;
     const q = `lat=${pos.lat.toFixed(4)}&lon=${pos.lon.toFixed(4)}`;
     // Both come from the same cached PSKReporter query on the server.
+    if (!state.vhf) renderVhf();
+    // Failures are kept so the cards can say why they're empty. Data from an
+    // earlier load stays on screen.
     await Promise.all([
-      api(`api/activity?${q}`).then(a => { state.activity = a; renderBands(); }),
-      api(`api/vhf?${q}`).then(v => { state.vhf = v; renderVhf(); }),
-    ].map(x => x.catch(e => console.warn(e))));
+      api(`api/activity?${q}`).then(a => { state.activity = a; state.activityError = null; }, e => { state.activityError = e.message; }).then(renderBands),
+      api(`api/vhf?${q}`).then(v => { state.vhf = v; state.vhfError = null; }, e => { state.vhfError = e.message; }).then(renderVhf),
+    ]);
   }
   async function loadIono() {
     try { state.iono = await api('api/ionosondes'); renderBands(); drawGrayline(); } catch (e) { console.warn(e); }
