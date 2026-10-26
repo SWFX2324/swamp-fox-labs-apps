@@ -1260,9 +1260,22 @@ async function handleSetup(req, res) {
 
 // ---------------------------------------------------------------- HTTP
 
+// Sent with every response. Inline style attributes are needed (Leaflet and
+// the charts use them); scripts only come from the app itself; images may be
+// map tiles and QRZ photos over https.
+const SECURITY_HEADERS = {
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
+  'X-Frame-Options': 'SAMEORIGIN',
+  'Content-Security-Policy': [
+    "default-src 'self'", "script-src 'self'", "style-src 'self' 'unsafe-inline'", "img-src 'self' data: https:",
+    "connect-src 'self'", "font-src 'self'", "object-src 'none'", "base-uri 'self'", "form-action 'self'", "frame-ancestors 'self'",
+  ].join('; '),
+};
+
 function send(res, status, body, type = 'application/json') {
   const data = type === 'application/json' ? JSON.stringify(body) : body;
-  res.writeHead(status, { 'Content-Type': type, 'Cache-Control': 'no-store' });
+  res.writeHead(status, { ...SECURITY_HEADERS, 'Content-Type': type, 'Cache-Control': 'no-store' });
   res.end(data);
 }
 
@@ -1374,24 +1387,62 @@ async function api(route, q, res) {
 
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png' };
 
-function serveStatic(route, res) {
-  const rel = route === '/' ? 'index.html' : decodeURIComponent(route).replace(/^\/+/, '');
+// Asset links in index.html carry the app version, so a browser never mixes
+// an old app.js with a new page after an update. Outside Home Assistant the
+// start time stands in for the version.
+const ASSET_VERSION = process.env.APP_VERSION && process.env.APP_VERSION !== 'dev' ? process.env.APP_VERSION : String(Date.parse(STARTED));
+const VERSIONED = /((?:src|href)=")(lib\/leaflet\/leaflet\.(?:css|js)|style\.css|hamcore\.js|app\.js)"/g;
+
+function serveStatic(url, res) {
+  let rel;
+  try { rel = url.pathname === '/' ? 'index.html' : decodeURIComponent(url.pathname).replace(/^\/+/, ''); } catch { return send(res, 400, { error: 'bad path' }); }
   const file = path.resolve(STATIC_DIR, rel);
   if (!file.startsWith(STATIC_DIR + path.sep)) return send(res, 403, { error: 'forbidden' });
   fs.readFile(file, (err, data) => {
     if (err) return send(res, 404, { error: 'not found' });
-    res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
+    const isPage = rel === 'index.html';
+    if (isPage) data = data.toString('utf8').replace(VERSIONED, (_, attr, f) => `${attr}${f}?v=${encodeURIComponent(ASSET_VERSION)}"`);
+    // Versioned assets never change at the same URL; everything else revalidates.
+    const cache = isPage ? 'no-store' : url.searchParams.get('v') === ASSET_VERSION ? 'public, max-age=31536000, immutable' : 'no-cache';
+    res.writeHead(200, { ...SECURITY_HEADERS, 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': cache });
     res.end(data);
   });
 }
 
+// Inside Home Assistant, only the ingress proxy may connect: other apps on the
+// internal network can't reach the dashboard or its setup endpoint directly.
+// Outside Home Assistant (development) anything may connect, unless
+// INGRESS_ONLY=true (for testing this check).
+const INGRESS_PROXY = '172.30.32.2';
+const IN_HOME_ASSISTANT = fs.existsSync('/data') || process.env.INGRESS_ONLY === 'true';
+
+function clientAllowed(req) {
+  if (!IN_HOME_ASSISTANT) return true;
+  const ip = String(req.socket.remoteAddress || '').replace(/^::ffff:/, '');
+  return ip === INGRESS_PROXY || ip === '127.0.0.1' || ip === '::1';
+}
+
+// Requests that change something must be same-origin JSON. A page on another
+// site can't send a JSON request without a CORS preflight, which this server
+// never approves, and browsers mark cross-site requests in Sec-Fetch-Site.
+function writeAllowed(req) {
+  const site = req.headers['sec-fetch-site'];
+  if (site && site !== 'same-origin') return false;
+  return /^application\/json\b/i.test(req.headers['content-type'] || '');
+}
+
 http.createServer(async (req, res) => {
   try {
+    if (!clientAllowed(req)) {
+      console.warn(`[http] refused ${req.socket.remoteAddress}: only Home Assistant ingress may connect`);
+      return send(res, 403, { error: 'Open the dashboard from the Home Assistant sidebar.' });
+    }
     const url = new URL(req.url, 'http://localhost');
+    if (req.method !== 'GET' && req.method !== 'HEAD' && !writeAllowed(req)) return send(res, 403, { error: 'Request refused' });
     if (url.pathname === '/api/setup' && req.method === 'POST') return await handleSetup(req, res);
     if (url.pathname === '/api/paths' && (req.method === 'POST' || req.method === 'DELETE')) return await handlePaths(req, res, url);
     if (url.pathname.startsWith('/api/')) return await api(url.pathname, url.searchParams, res);
-    return serveStatic(url.pathname, res);
+    return serveStatic(url, res);
   } catch (e) {
     console.error('[http]', e.message);
     send(res, 502, { error: e.message });

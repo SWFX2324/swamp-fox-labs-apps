@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.0.1
+
+Security and polish. No new features, and nothing changes in Home Assistant.
+
+- **Only Home Assistant can connect.** The app now accepts connections only from
+  Home Assistant's ingress proxy, so other apps on Home Assistant's internal network
+  can no longer reach the dashboard or its setup directly.
+- **Changes need a same-origin request.** Setup and saved paths accept only JSON
+  requests from the dashboard itself, so another website can't send changes
+  through your logged-in browser.
+- **Security headers** on every response, including a content security policy that
+  only allows the app's own scripts.
+- Links and photos from QRZ and FCC data are only used if they're plain https links.
+- The build is pinned to exact versions of its GitHub Actions and base image, and
+  Dependabot proposes updates for review.
+- **No more stale pages after an update.** The page asks for this version's files by
+  name, so a browser can't mix old and new code.
+- **Clear error messages** everywhere, instead of "HTTP 400". If the app itself
+  can't be reached (for example while it restarts), a banner says so.
+- **Warnings on cards** when a source they depend on is failing, rate limited or
+  reconnecting, with how old the data is. Hover the warning for details.
+
 ## 1.0.0
 
 - **Propagation tab**: point-to-point analysis from your QTH to any callsign, grid

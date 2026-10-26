@@ -613,3 +613,14 @@ button.small { padding: 4px 10px; font-size: 12px; }
 table.prop-grid { table-layout: fixed; }
 .prop-grid thead th:first-child, .prop-grid tbody th { width: 44px; }
 .prop-grid thead th { overflow: visible; }
+
+/* ------------------------------------------------------------ data freshness */
+/* Shown next to a card's title only while one of its sources has a problem. */
+.card-head .stale { margin-right: auto; }
+.stale {
+  display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 999px;
+  font-size: 12px; font-weight: 500; color: var(--text); cursor: help;
+  background: color-mix(in srgb, var(--warning) 22%, transparent);
+}
+.stale::before { content: "!"; font-weight: 700; width: 14px; height: 14px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 10px; background: var(--warning); color: #000; }
+.app-banner { position: sticky; top: 0; z-index: 1100; padding: 8px 16px; text-align: center; font-size: 13px; background: var(--warning); color: #000; }

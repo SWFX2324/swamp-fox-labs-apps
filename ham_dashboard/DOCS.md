@@ -47,7 +47,8 @@ hide tabs they don't use. Space weather always stays.
 
 ### Data sources and connections
 
-If a panel is empty or out of date, open settings (⚙) → **Data sources and
+When a source a card depends on is failing, rate limited or reconnecting, the card shows
+a yellow warning next to its title; hover it for details. For the full picture, open settings (⚙) → **Data sources and
 connections**. It lists each data source with when it last updated and any error
 (for example "Rate limited" when PSKReporter asks the app to slow down), plus the
 DX cluster, APRS-IS and Home Assistant connections.
@@ -505,6 +506,12 @@ devices doesn't multiply the requests to these free services.
 
 ## Notes
 
+- **Security and privacy.** The dashboard only accepts connections from Home
+  Assistant's ingress proxy, so it's reachable only through the sidebar, by
+  Home Assistant administrators. Your QRZ password stays in the app's
+  configuration and is only ever sent to QRZ. Map tiles come from OpenStreetMap
+  and USGS, which see the map area you're viewing (the **Plain** layer avoids
+  them), and PSKReporter queries include your 2-character grid field.
 - The "At your QTH" rating and the Propagation tab are estimates, not VOACAP
   predictions. Both are most useful when an ionosonde is reasonably close; the
   PSKReporter decodes shown next to them are the reality check.

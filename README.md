@@ -42,7 +42,8 @@ is one Node.js file with no dependencies. To run it outside Home Assistant:
 CALLSIGN=N0CALL GRID=DM14xd PORT=8099 node ham_dashboard/app/server.js
 ```
 
-Then open http://localhost:8099. Run the unit tests with:
+Then open http://localhost:8099. Outside Home Assistant any client may connect; set
+`INGRESS_ONLY=true` to test the "ingress proxy only" rule locally. Run the unit tests with:
 
 ```bash
 node --test "ham_dashboard/tests/*.test.js"

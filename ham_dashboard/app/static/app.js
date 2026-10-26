@@ -31,10 +31,18 @@
     };
   }
 
-  async function api(path) {
-    const r = await fetch(path, { cache: 'no-store' });
-    if (!r.ok) throw new Error(`${path}: HTTP ${r.status}`);
-    return r.json();
+  // Fetch JSON from the app. Errors carry the server's own message, or say
+  // plainly that the app can't be reached.
+  async function api(path, opts) {
+    let r;
+    try { r = await fetch(path, { cache: 'no-store', ...opts }); } catch {
+      $('#offlineBanner').hidden = false;
+      throw new Error('Can’t reach the dashboard app. It may be restarting.');
+    }
+    $('#offlineBanner').hidden = true;
+    const body = await r.json().catch(() => null);
+    if (!r.ok) throw new Error(body?.error || `The app answered with an error (HTTP ${r.status}).`);
+    return body;
   }
 
   // ------------------------------------------------------------ geo + sun math
@@ -1157,6 +1165,9 @@
     }
   }
 
+  // Links and images from outside data (QRZ, FCC) are used only if they're
+  // plain https URLs.
+  const httpsUrl = u => (/^https:\/\/[^\s"'<>]+$/i.test(String(u || '')) ? String(u) : '');
   const callLink = c => `<button type="button" class="call-link mono" data-call="${esc(c)}" title="Look up ${esc(c)}">${esc(c)}</button>`;
 
 
@@ -1872,7 +1883,7 @@
 
     out.innerHTML = `
       <div class="lookup-head">
-        ${r.image ? `<img class="lookup-photo" src="${esc(r.image)}" alt="Photo from QRZ for ${esc(r.call)}" referrerpolicy="no-referrer">` : ''}
+        ${httpsUrl(r.image) ? `<img class="lookup-photo" src="${esc(httpsUrl(r.image))}" alt="Photo from QRZ for ${esc(r.call)}" referrerpolicy="no-referrer">` : ''}
         <div>
           <div class="lookup-call mono">${esc(r.call)}</div>
           <div class="lookup-name">${esc(titleCase(r.name))}${r.nickname ? ` “${esc(r.nickname)}”` : ''}</div>
@@ -1881,8 +1892,8 @@
       </div>
       <dl class="facts">${facts.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join('')}</dl>
       <div class="lookup-links">
-        <a href="${esc(r.url)}" target="_blank" rel="noopener">QRZ.com page</a>
-        ${r.uls ? `<a href="${esc(r.uls)}" target="_blank" rel="noopener">FCC license record</a>` : ''}
+        ${httpsUrl(r.url) ? `<a href="${esc(httpsUrl(r.url))}" target="_blank" rel="noopener">QRZ.com page</a>` : ''}
+        ${httpsUrl(r.uls) ? `<a href="${esc(httpsUrl(r.uls))}" target="_blank" rel="noopener">FCC license record</a>` : ''}
         <button type="button" class="link-btn" data-path-target="${esc(r.call)}">Propagation to ${esc(r.call)}</button>
       </div>
       ${r.warning ? `<p class="error">QRZ lookup failed (${esc(r.warning)}), so this shows FCC data only.</p>` : ''}`;
@@ -1961,14 +1972,6 @@
   const PROP_BANDS = HF_BANDS.map(b => b[0]).reverse();
   const LIMIT_TEXT = { muf: 'above the MUF', absorption: 'daytime absorption', aurora: 'auroral zone, high Kp' };
 
-  // Like api(), but keeps the server's error message.
-  async function apiJson(path, opts) {
-    const r = await fetch(path, { cache: 'no-store', ...opts });
-    const body = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(body.error || `HTTP ${r.status}`);
-    return body;
-  }
-
   function analyzePath(q, { quiet = false } = {}) {
     const pos = gridToLatLon(station().grid);
     if (!pos) { prop.error = 'Set your grid square in settings first.'; renderProp(); return; }
@@ -1979,7 +1982,7 @@
     if (q.tlat != null) { params.set('tlat', q.tlat.toFixed(4)); params.set('tlon', q.tlon.toFixed(4)); } else params.set('target', q.target);
     // Only the latest request may update the page.
     const seq = prop.seq = (prop.seq || 0) + 1;
-    return apiJson(`api/path?${params}`)
+    return api(`api/path?${params}`)
       .then(d => { if (seq === prop.seq) { prop.data = d; prop.error = null; } })
       .catch(e => { if (seq === prop.seq) { prop.error = e.message; if (!quiet) prop.data = null; } })
       .finally(() => { if (seq === prop.seq) { prop.loading = false; renderProp(); } });
@@ -2008,7 +2011,7 @@
     const label = prompt('Name this path. It also names its Home Assistant sensor.', suggestion);
     if (!label || !label.trim()) return;
     try {
-      const d = await apiJson('api/paths', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ label, target: t }) });
+      const d = await api('api/paths', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ label, target: t }) });
       prop.saved = d.paths;
     } catch (e) { prop.error = e.message; }
     renderProp();
@@ -2017,7 +2020,7 @@
   async function removePath(id) {
     const p = prop.saved.find(x => x.id === id);
     if (!p || !confirm(`Remove the saved path “${p.label}”? Its Home Assistant sensor goes away too.`)) return;
-    try { prop.saved = (await apiJson(`api/paths?id=${encodeURIComponent(id)}`, { method: 'DELETE' })).paths; } catch (e) { prop.error = e.message; }
+    try { prop.saved = (await api(`api/paths?id=${encodeURIComponent(id)}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' } })).paths; } catch (e) { prop.error = e.message; }
     renderProp();
   }
 
@@ -2613,6 +2616,36 @@
     if ($('#statusBox').open) loadStatus();
   }
 
+  // ------------------------------------------------------------ data freshness on cards
+
+  // Each card lists the sources it depends on (data-sources). Its badge stays
+  // hidden unless one of them is failing, rate limited or reconnecting.
+  function sourceProblem(name, src, conn) {
+    if (conn) {
+      return conn.status === 'reconnecting' || (conn.status === 'connecting' && conn.error)
+        ? { short: `${name} reconnecting`, long: `${name}: ${conn.error || 'connection lost'}. Retrying.` } : null;
+    }
+    if (!src || src.state === 'ok' || src.state === 'unused') return null;
+    const what = src.limited ? 'rate limited' : 'not responding';
+    const why = src.limited ? 'is asking the app to slow down' : 'isn’t responding';
+    return src.state === 'stale'
+      ? { short: `${name} ${what} · last update ${ago(src.ok)}`, long: `${name} ${why} (${src.error}). Showing its last data, from ${ago(src.ok)}. Retrying.` }
+      : { short: `${name} ${what}`, long: `${name} ${why} (${src.error}). Retrying.` };
+  }
+
+  async function loadFreshness() {
+    let s;
+    try { s = await api('api/status'); } catch { return; }
+    const byName = Object.fromEntries(s.sources.map(x => [x.name, x]));
+    const live = { 'DX cluster': s.live.cluster, 'APRS-IS': s.live.aprs };
+    for (const el of document.querySelectorAll('.stale[data-sources]')) {
+      const problems = el.dataset.sources.split(',').map(n => sourceProblem(n, byName[n], live[n])).filter(Boolean);
+      el.hidden = !problems.length;
+      el.textContent = problems.length === 1 ? problems[0].short : problems.length ? `${problems.length} sources have problems` : '';
+      el.title = problems.map(p => p.long).join(String.fromCharCode(10));
+    }
+  }
+
   // ------------------------------------------------------------ data source status
 
   let lastStatus = null;
@@ -2943,6 +2976,8 @@
     setInterval(loadCycle, 12 * 3600000);
     setInterval(loadActivity, 5 * 60000);
     setInterval(loadStorm, 60000);
+    setTimeout(loadFreshness, 15000);
+    setInterval(loadFreshness, 2 * 60000);
     setInterval(() => { if (currentView === 'weather' && !$('#panel-grayline').hidden) drawGrayline(); renderBands(); }, 60000);
 
     // Redraw canvases and charts only when the width changes, not on every

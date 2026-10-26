@@ -1,0 +1,22 @@
+# Actions and the base image are pinned to exact commits and digests.
+# Dependabot opens a pull request when a newer version is out, so updates are
+# reviewed instead of arriving silently. It waits a week after a release
+# before proposing it.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: docker
+    directory: /ham_dashboard
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
