@@ -133,6 +133,16 @@ function anchorAt(cal, p) {
   return { ratio: w * best.ratio + (1 - w) * cal.median, md: best.md, station: best.name, km: Math.round(best.d) };
 }
 
+// MUF(3000) at a point, anchored the same way as a path: by the nearest fresh
+// ionosonde within 1500 km, or else the global median ratio. The band table
+// falls back to this when no ionosonde nearby has reported recently.
+function localMuf(p, { now = Date.now(), ssn = 100, stations = [] } = {}) {
+  const cal = calibration(stations, now, ssn);
+  const a = anchorAt(cal, p);
+  const fof2 = modelFoF2(p, now, ssn) * a.ratio;
+  return { muf: +(fof2 * mFactor(3000, a.md || 3.2)).toFixed(1), fof2: +fof2.toFixed(1), anchors: cal.points.length };
+}
+
 // George-Bradley absorption index for one pass through the D layer.
 function absorptionIndex(p, t, ssn) {
   const chi = 90 - sunAltAt(p, t);
@@ -332,5 +342,5 @@ const HF_EDGES = [
 
 module.exports = {
   ssnFromSfi, destination, pathGeometry, hopAngles, mFactor, geomagLat,
-  PathTracker, secAt, controlPoints, modelFoF2, calibration, anchorAt, absorptionIndex, evaluate, analyzePath, summarize, measured,
+  PathTracker, secAt, controlPoints, modelFoF2, calibration, anchorAt, localMuf, absorptionIndex, evaluate, analyzePath, summarize, measured,
 };

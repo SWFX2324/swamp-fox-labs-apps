@@ -247,10 +247,11 @@ function solarCycle() {
   });
 }
 
-function ionosondes() {
-  return cached('iono', 10 * MIN, async () => {
-    const cutoff = Date.now() - 3 * 3600_000;
-    return (await get('https://prop.kc2g.com/api/stations.json'))
+// Every KC2G station with its latest reading, however old. Many have been
+// silent for years.
+function ionosondeStations() {
+  return cached('iono', 10 * MIN, async () =>
+    (await get('https://prop.kc2g.com/api/stations.json'))
       .map(s => {
         let lon = num(s.station?.longitude);
         if (lon > 180) lon -= 360;
@@ -260,8 +261,34 @@ function ionosondes() {
           time: s.time + 'Z', cs: s.cs, mufd: num(s.mufd), fof2: num(s.fof2), md: num(s.md),
         };
       })
-      .filter(s => s.mufd && s.lat !== null && Date.parse(s.time) > cutoff && s.cs > 0);
-  });
+      .filter(s => s.mufd && s.lat !== null && s.cs > 0));
+}
+
+// The stations that reported in the last 3 hours.
+async function ionosondes() {
+  const cutoff = Date.now() - 3 * 3600_000;
+  return (await ionosondeStations()).filter(s => Date.parse(s.time) > cutoff);
+}
+
+// The estimate behind "At your QTH" and the band sensors: the nearest ionosonde
+// within 3000 km that reported in the last 3 hours, or else the model, anchored
+// to the ionosondes that are reporting. The model answer names the nearest
+// station heard from in the last week, so it's clear why there's no reading.
+async function localEstimate(pos) {
+  const [all, inputs] = await Promise.all([settle(ionosondeStations()), pathInputs()]);
+  const station = HamCore.nearestIonosonde(pos, inputs.stations);
+  if (station) {
+    return {
+      source: 'ionosonde', muf: +station.mufd.toFixed(1), fof2: station.fof2, kp: inputs.kp,
+      station: { name: station.name, km: Math.round(station.dist), time: station.time },
+    };
+  }
+  const week = Date.now() - 7 * 24 * 3600_000;
+  const recent = HamCore.nearestIonosonde(pos, (all || []).filter(s => Date.parse(s.time) > week));
+  return {
+    source: 'model', ...Prop.localMuf(pos, inputs), kp: inputs.kp,
+    nearest: recent ? { name: recent.name, km: Math.round(recent.dist), time: recent.time } : null,
+  };
 }
 
 function propMap(kind) {
@@ -979,7 +1006,7 @@ const fmtMHzRange = f => (Array.isArray(f) ? `${f[0].toFixed(3)}-${f[1].toFixed(
 async function haEntities() {
   const pos = gridToLatLon(options.grid);
   const now = Date.now();
-  const [hq, scales, kpData, wind, xr, iono] = await Promise.all([hamqsl(), noaaScales(), kp(), solarWind(), xray(), ionosondes()].map(settle));
+  const [hq, scales, kpData, wind, xr, local] = await Promise.all([hamqsl(), noaaScales(), kp(), solarWind(), xray(), pos && localEstimate(pos)].map(settle));
   const past = (kpData || []).filter(k => k.kind !== 'predicted' && Date.parse(k.time) <= now);
   const kpNow = past.length ? past[past.length - 1].kp : hq?.k ?? null;
   const out = [];
@@ -1005,15 +1032,16 @@ async function haEntities() {
   out.push(['binary_sensor.ham_geomagnetic_storm', (cur?.G?.scale ?? 0) >= 1 || kpNow >= 5 ? 'on' : 'off', { friendly_name: 'Geomagnetic storm', icon: 'mdi:earth', level: `G${cur?.G?.scale ?? 0}`, k_index: kpNow }]);
 
   // Local band estimate, the same math the dashboard uses.
-  const station = pos && HamCore.nearestIonosonde(pos, iono || []);
+  const station = local?.station;
   const sunAlt = pos ? HamCore.sunAltitude(HamCore.sunPosition(new Date()), pos.lat, pos.lon) : 0;
-  sensor('local_muf', station ? +station.mufd.toFixed(1) : null, {
+  sensor('local_muf', local?.muf ?? null, {
     friendly_name: 'Local MUF (3000 km)', unit_of_measurement: 'MHz', state_class: 'measurement', icon: 'mdi:sine-wave',
-    ionosonde: station?.name ?? null, distance_km: station ? Math.round(station.dist) : null, measured: station?.time ?? null, fof2_mhz: station?.fof2 ?? null,
+    source: local?.source ?? null,
+    ionosonde: station?.name ?? null, distance_km: station?.km ?? null, measured: station?.time ?? null, fof2_mhz: local?.fof2 ?? null,
   });
   const groups = Object.fromEntries((hq?.bands || []).map(b => [b.name, b]));
   for (const [band, mhz, group] of HamCore.HF_BANDS) {
-    const r = station ? HamCore.rateBand(mhz, station.mufd, sunAlt, kpNow ?? 0) : null;
+    const r = local ? HamCore.rateBand(mhz, local.muf, sunAlt, kpNow ?? 0) : null;
     sensor(`band_${band}`, r ? r[0].toUpperCase() + r.slice(1) : null, {
       friendly_name: `${band} conditions`, icon: 'mdi:radio-tower', frequency_mhz: mhz,
       hamqsl_day: groups[group]?.day ?? null, hamqsl_night: groups[group]?.night ?? null,
@@ -1416,6 +1444,11 @@ async function api(route, q, res, req) {
       const lat = num(q.get('lat')), lon = num(q.get('lon'));
       if (lat === null || lon === null || Math.abs(lat) > 90 || Math.abs(lon) > 180) return send(res, 400, { error: 'Set a valid grid square' });
       return send(res, 200, await bandActivity({ lat, lon }));
+    }
+    case '/api/local': {
+      const lat = num(q.get('lat')), lon = num(q.get('lon'));
+      if (lat === null || lon === null || Math.abs(lat) > 90 || Math.abs(lon) > 180) return send(res, 400, { error: 'Set a valid grid square' });
+      return send(res, 200, await localEstimate({ lat, lon }));
     }
     case '/api/vhf': {
       const lat = num(q.get('lat')), lon = num(q.get('lon'));

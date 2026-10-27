@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.6.3
+
+- **"At your QTH now" works without a nearby ionosonde.** It needs an ionosonde
+  within 3000 km that reported in the last 3 hours, and in North America that's
+  rare: most have been offline for years, and Idaho often reports only now and
+  then. The column then said n/a. It now falls back to the propagation model's
+  MUF, scaled by how the live ionosondes elsewhere compare with it, and the header
+  says *model MUF*. The note names the nearest ionosonde heard from in the last
+  week and when it last reported.
+- **The band sensors use the same estimate**, so `sensor.ham_local_muf` and
+  `sensor.ham_band_*` have a value instead of unknown when no ionosonde is near.
+  A new `source` attribute on `sensor.ham_local_muf` says `ionosonde` or `model`.
+- **Clearer location errors.** With Home Assistant open over plain http, the
+  "Use my location" buttons explain that browsers only share location with https
+  pages, instead of showing the browser's raw error.
+
 ## 1.6.2
 
 Fixes for the first GitHub code scanning (CodeQL) results. Nothing changes in

@@ -118,7 +118,11 @@ are public.
     the sun, not a forecast.
   - *At your QTH now* – a local estimate that compares each band with the MUF(3000)
     measured by the nearest ionosonde (within 3000 km, last 3 hours), adjusted for
-    daytime D-layer absorption on 80/60/40 m and for geomagnetic storms.
+    daytime D-layer absorption on 80/60/40 m and for geomagnetic storms. When no
+    ionosonde nearby has reported, the column header says *model MUF* and the
+    MUF comes from the propagation model instead: the sunspot number and the
+    sun's height at your QTH, scaled by how the live ionosondes elsewhere compare
+    with it. That's common in North America, where most ionosondes are offline.
   - *Heard nearby* – measured activity: how many distinct stations PSKReporter
     monitors within about 500 miles of you decoded on each band in the last 15
     minutes (mostly FT8/FT4), how many of them were DX (over about 1,550 miles
@@ -406,7 +410,7 @@ add-on's `grid` for anything location-based:
 | `sensor.ham_noaa_r_scale`, `sensor.ham_noaa_s_scale`, `sensor.ham_noaa_g_scale` | NOAA scale level, 0–5 |
 | `binary_sensor.ham_radio_blackout` | On at R1 or higher |
 | `binary_sensor.ham_geomagnetic_storm` | On at G1 or higher, or Kp 5+ |
-| `sensor.ham_local_muf` | MUF from the nearest ionosonde (MHz) |
+| `sensor.ham_local_muf` | MUF(3000) at your QTH (MHz): from the nearest ionosonde, or the propagation model when none nearby is reporting (the `source` attribute says which) |
 | `sensor.ham_band_160m` … `sensor.ham_band_10m` | `Good`, `Fair`, `Poor` or `Closed` at your QTH, with HamQSL day/night ratings as attributes |
 | `sensor.ham_next_pass_iss`, `sensor.ham_next_pass_so_50`, … | Rise time of each satellite's next pass of 10° or more, with elevation, azimuths and frequencies as attributes |
 | `sensor.ham_next_good_pass` | The next pass of any satellite reaching 30° or more |
@@ -637,9 +641,17 @@ shortly before. The app waits 15 minutes and tries again on its own; the cards s
 so while they wait. Recent results are kept across restarts, so this is rarer from
 1.2.0 on.
 
-**The band table says "no nearby ionosonde".** No ionosonde within 3000 km has
-reported in the last 3 hours, so the local estimate isn't available. The HamQSL
-ratings and the measured "Heard nearby" column still work.
+**The band table says "model MUF".** No ionosonde within 3000 km has reported in
+the last 3 hours, so "At your QTH" uses the propagation model. The note under the
+table names the nearest ionosonde heard from in the last week and when it last
+reported. In North America only a few ionosondes still report (Idaho is often
+the only one), so this is normal there. The measured "Heard nearby" column is the
+reality check.
+
+**"Your browser only shares your location with https pages".** Browsers only
+give a page your location over https. When Home Assistant is open over plain
+http (like `http://homeassistant.local:8123`), enter your grid square instead,
+or use Home Assistant's https address.
 
 **My phone shows a different callsign or grid than my desktop.** Settings are
 saved per browser, and a browser can override the app's configuration. Settings

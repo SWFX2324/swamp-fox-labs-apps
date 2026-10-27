@@ -71,6 +71,14 @@ test('end to end against fake services', async t => {
     assert.ok(solar.body.kp.length > 0, 'Kp parsed');
     const iono = await getJson(s, '/api/ionosondes');
     assert.ok(iono.body.length > 5, 'ionosondes parsed');
+    const local = await getJson(s, `/api/local?${QTH}`);
+    assert.equal(local.body.source, 'ionosonde', 'a fresh ionosonde nearby is used');
+    assert.ok(local.body.muf > 0 && local.body.station.km <= 3000);
+    // Mid-Pacific, far from any ionosonde: the model answers.
+    const ocean = await getJson(s, '/api/local?lat=-35&lon=-130');
+    assert.equal(ocean.body.source, 'model');
+    assert.ok(ocean.body.muf > 0 && ocean.body.anchors > 5, 'model anchored to the live ionosondes');
+    assert.equal((await getJson(s, '/api/local?lat=x&lon=1')).status, 400);
     const cycle = await getJson(s, '/api/cycle');
     assert.ok(cycle.body.observed.length > 100);
   });

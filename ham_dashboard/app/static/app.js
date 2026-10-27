@@ -83,6 +83,16 @@
     return `${Math.round(s / 86400)} d ago`;
   };
 
+  // Browsers only share location with https pages, so Home Assistant opened
+  // over plain http can't use it.
+  const locationUnavailable = () =>
+    !window.isSecureContext ? 'Your browser only shares your location with https pages, and Home Assistant is open over http. Enter your grid square instead.'
+    : !navigator.geolocation ? 'Location isn’t available in this browser. Enter your grid square instead.'
+    : null;
+  const locationError = e =>
+    e?.code === 1 ? 'Location access was blocked for this page. Allow it in the browser, or enter your grid square instead.'
+    : 'Couldn’t get your location. Enter your grid square instead.';
+
   // ------------------------------------------------------------ tooltip
 
   const tip = $('#tooltip');
@@ -217,25 +227,38 @@
     return `<span class="mono" title="${esc(title)}">${a.stations}</span><div class="sub">${a.dx ? `${esc(a.dx)} DX` : 'local'}${a.farthest ? ` · ${fmtDist(a.farthest.km)}` : ''}</div>`;
   }
 
+  const posKey = pos => `${pos.lat.toFixed(4)},${pos.lon.toFixed(4)}`;
+
+  // "At your QTH": the server's estimate for this grid (a fresh ionosonde, or
+  // the model when none is near), or the nearest fresh ionosonde until it
+  // arrives.
+  function localEstimate(pos) {
+    if (!pos) return null;
+    if (state.local?.key === posKey(pos)) return state.local;
+    const iono = nearestIonosonde(pos);
+    return iono ? { source: 'ionosonde', muf: iono.mufd, station: { name: iono.name, km: iono.dist, time: iono.time } } : null;
+  }
+
   function renderBands() {
     const h = state.solar?.hamqsl;
     const pos = gridToLatLon(station().grid);
     const sunAlt = pos ? sunAltitude(sunPosition(new Date()), pos.lat, pos.lon) : null;
     const isDay = sunAlt == null ? new Date().getUTCHours() >= 12 && new Date().getUTCHours() < 24 : sunAlt > -0.833;
-    const iono = nearestIonosonde(pos);
+    const est = localEstimate(pos);
+    const mufLabel = est && `${est.source === 'model' ? 'model ' : ''}MUF`;
     const kp = currentKp();
     const groups = Object.fromEntries((h?.bands || []).map(b => [b.name, b]));
 
     const act = state.activity;
     const head = `<thead><tr><th>Band</th><th class="freq">MHz</th>
-      <th>At your QTH now<small>${iono ? `${term('muf', 'MUF')} ${iono.mufd.toFixed(1)} MHz` : pos ? 'no nearby ionosonde' : 'set grid'}</small></th>
+      <th>At your QTH now<small>${est ? `${est.source === 'model' ? 'model ' : ''}${term('muf', 'MUF')} ${est.muf.toFixed(1)} MHz` : pos ? 'unavailable' : 'set grid'}</small></th>
       <th class="num">${term('psk', 'Heard nearby')}<small>last ${act?.windowMin ?? 15} min</small></th>
       <th class="${isDay ? 'now' : 'hide-sm'}">${term('hamqsl', 'HamQSL day')}${isDay ? '<small>now</small>' : '<small>&nbsp;</small>'}</th>
       <th class="${!isDay ? 'now' : 'hide-sm'}">HamQSL night${!isDay ? '<small>now</small>' : '<small>&nbsp;</small>'}</th></tr></thead>`;
     const body = HF_BANDS.map(([name, mhz, group]) => {
       const g = groups[group];
-      const r = iono ? rateBand(mhz, iono.mufd, sunAlt ?? 0, kp ?? 0) : null;
-      const why = iono ? `${mhz} MHz vs MUF ${iono.mufd.toFixed(1)} MHz${name === '160m' && sunAlt > 0 ? ' (160 m needs darkness for DX)' : ''}` : '';
+      const r = est ? rateBand(mhz, est.muf, sunAlt ?? 0, kp ?? 0) : null;
+      const why = est ? `${mhz} MHz vs ${mufLabel} ${est.muf.toFixed(1)} MHz${name === '160m' && sunAlt > 0 ? ' (160 m needs darkness for DX)' : ''}` : '';
       return `<tr><td class="band">${name}</td><td class="freq">${mhz}</td>
         <td>${ratingPill(r, why)}</td>
         <td class="num">${activityCell(act?.bands?.[name])}</td>
@@ -246,10 +269,14 @@
     $('#bandsMeta').textContent = sunAlt == null ? '' : `Sun ${sunAlt >= 0 ? 'up' : 'down'} at QTH (${sunAlt.toFixed(0)}°)`;
 
     let note = 'HamQSL ratings are N0NBH’s global estimates for band pairs. ';
-    if (iono) {
-      note += `“At your QTH” is an estimate from the ${iono.name} ionosonde (${fmtDist(iono.dist)} away, measured ${ago(iono.time)}), with daytime absorption and the current Kp of ${kp ?? '?'} factored in. `;
+    if (est?.source === 'ionosonde') {
+      const s = est.station;
+      note += `“At your QTH” is an estimate from the ${s.name} ionosonde (${fmtDist(s.km)} away, measured ${ago(s.time)}), with daytime absorption and the current Kp of ${kp ?? '?'} factored in. `;
+    } else if (est) {
+      const n = est.nearest;
+      note += `No ionosonde within ${fmtDist(3000)} has reported in the last 3 hours${n ? ` (the nearest recent one, ${n.name}, ${fmtDist(n.km)} away, last reported ${ago(n.time)})` : ''}, so “At your QTH” comes from the propagation model: the sunspot number and the sun’s height at your QTH, ${est.anchors ? `scaled by how ${est.anchors} live ionosondes elsewhere compare with it` : 'with no live ionosondes to check it against'}. It’s a rougher estimate; “Heard nearby” is the reality check. `;
     } else if (pos) {
-      note += 'No ionosonde within 3000 km has reported in the last 3 hours, so the local estimate is unavailable. ';
+      note += 'The local estimate isn’t available right now. ';
     } else {
       note += 'Set your grid square for a local estimate. ';
     }
@@ -2595,6 +2622,7 @@
 
   // Highlights per version, shown once after an update so new features get found.
   const WHATS_NEW = [
+    ['1.6.3', ['“At your QTH now” no longer goes blank without a nearby ionosonde: it uses the propagation model and says so in the header.']],
     ['1.6.1', ['Everyone in your Home Assistant can open the dashboard; only admins can change setup and saved paths.']],
     ['1.6.0', ['Ready-made Home Assistant blueprints for band openings, DX spots, nearby POTA and lightning; the Documentation tab has import links.']],
     ['1.4.0', [
@@ -2908,11 +2936,12 @@
         setup.step++;
         renderSetup();
       } else if (t.id === 'setupLocate') {
-        if (!navigator.geolocation) return setupError('Location isn’t available in this browser. Enter your grid instead.');
+        const why = locationUnavailable();
+        if (why) return setupError(why);
         t.disabled = true;
         navigator.geolocation.getCurrentPosition(
           p => { $('#setupGrid').value = latLonToGrid(p.coords.latitude, p.coords.longitude); setupError(''); t.disabled = false; },
-          err => { setupError(`Couldn’t get your location (${err.message}). Enter your grid instead.`); t.disabled = false; },
+          err => { setupError(locationError(err)); t.disabled = false; },
           { timeout: 10000 });
       } else if (t.id === 'setupFromLicense') {
         t.disabled = true;
@@ -2937,7 +2966,7 @@
   const TOUR_STEPS = [
     ['weather', '#viewTabs', 'Eight views', 'Space weather, propagation paths, repeaters, APRS, POTA, satellite passes, callsign lookup and a reference tab. Hide the ones you don’t use in settings (⚙ at the top right).'],
     ['weather', '#tiles', 'Conditions right now', 'Solar flux, sunspots, the K-index and more. Tap any dotted word for a plain-language explanation, and use the ▾ at a card’s top right to collapse cards you don’t need.'],
-    ['weather', '#bandsTable', 'Which bands are open', '“At your QTH” is an estimate from the nearest ionosonde. “Heard nearby” is measured: stations actually decoded near you in the last 15 minutes.'],
+    ['weather', '#bandsTable', 'Which bands are open', '“At your QTH” is an estimate from the nearest ionosonde, or from the propagation model when none nearby is reporting. “Heard nearby” is measured: stations actually decoded near you in the last 15 minutes.'],
     ['weather', '#stormStatus', 'Storm safety', 'Safe, Caution or Danger for your station, from National Weather Service alerts and an optional lightning sensor. Danger also shows a red banner on every tab.'],
     ['weather', '#panel-grayline', 'Maps', 'Click a map, then scroll to zoom, or pinch on a phone. The layers button switches between Dark, Streets, Satellite and Topo. The golden band is the gray line, where low-band DX is often best.'],
     ['prop', '#propForm', 'Propagation to anywhere', 'Enter a callsign, grid or prefix, or click the map, to see how each band should work to it now and over the next 24 hours, with PSKReporter showing what’s actually getting through. Save paths you care about to get Home Assistant sensors for them.'],
@@ -3237,10 +3266,11 @@
     });
     $('#locateBtn').addEventListener('click', () => {
       const err = $('#settingsError');
-      if (!navigator.geolocation) { err.textContent = 'Location is not available in this browser.'; err.hidden = false; return; }
+      const why = locationUnavailable();
+      if (why) { err.textContent = why; err.hidden = false; return; }
       navigator.geolocation.getCurrentPosition(
         p => { $('#setGrid').value = latLonToGrid(p.coords.latitude, p.coords.longitude); err.hidden = true; },
-        e => { err.textContent = `Couldn't get your location (${e.message}). Enter the grid manually.`; err.hidden = false; },
+        e => { err.textContent = locationError(e); err.hidden = false; },
         { timeout: 10000 });
     });
     $('#settingsForm').addEventListener('submit', e => {
@@ -3271,6 +3301,7 @@
     state.vhf = null;
     renderVhf();
     loadActivity();
+    loadLocal();
     renderStorm();
     rpt.key = '';
     rpt.pos = null;
@@ -3305,6 +3336,16 @@
   }
   async function loadIono() {
     try { state.iono = await api('api/ionosondes'); renderBands(); drawGrayline(); } catch (e) { console.warn(e); }
+    await loadLocal();
+  }
+  async function loadLocal() {
+    const pos = gridToLatLon(station().grid);
+    if (!pos) return;
+    try {
+      const local = await api(`api/local?lat=${pos.lat.toFixed(4)}&lon=${pos.lon.toFixed(4)}`);
+      state.local = { ...local, key: posKey(pos) };
+      renderBands();
+    } catch (e) { console.warn(e); }
   }
   async function loadSpots() {
     try { state.spots = await api('api/spots'); renderSpots(); } catch (e) { console.warn(e); }

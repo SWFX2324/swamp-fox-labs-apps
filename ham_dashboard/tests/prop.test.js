@@ -70,6 +70,19 @@ test('live ionosonde readings scale the model nearby', () => {
   assert.equal(P.anchorAt(cal, { lat: -40, lon: 170 }).station, null);
 });
 
+test('local MUF from the model when no ionosonde is near', () => {
+  const t = Date.parse('2026-10-26T20:00:00Z'); // midday at DM14
+  const bare = P.localMuf(QTH, { now: t, ssn: 100 });
+  assert.equal(bare.anchors, 0);
+  near(bare.muf, bare.fof2 * 3.2, 0.2, 'MUF(3000) = foF2 x M(3000)');
+  assert.ok(bare.muf > P.localMuf(QTH, { now: t + 12 * 3600_000, ssn: 100 }).muf, 'day above night');
+  // Distant stations reading 20% above the model raise it everywhere.
+  const far = [{ lat: 50, lon: 10 }, { lat: -30, lon: 25 }].map(s => ({ ...s, name: 'Far', fof2: 1.2 * P.modelFoF2(s, t, 100) }));
+  const anchored = P.localMuf(QTH, { now: t, ssn: 100, stations: far });
+  assert.equal(anchored.anchors, 2);
+  near(anchored.fof2, bare.fof2 * 1.2, 0.15);
+});
+
 test('80 m over a long daylight path is absorbed, 20 m is fine', () => {
   const geo = P.pathGeometry(QTH, H.gridToLatLon('FN42'));
   const r = P.evaluate(geo, Date.parse('2026-10-26T19:00:00Z'), { bands: BANDS, ssn: 100, kp: 1 });
