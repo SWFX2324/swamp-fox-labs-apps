@@ -6,7 +6,7 @@ blueprint:
     {{ band }}, {{ mode }}, {{ spotter }} and {{ comment }}, for example
     "{{ dx }} spotted on {{ frequency }} kHz {{ mode }}".
   domain: automation
-  source_url: https://github.com/SWFX2324/swamp-fox-labs-apps/blob/main/blueprints/automation/ham_dx_spot.yaml
+  source_url: https://github.com/SWFX2324/swamp-fox-labs-ha-apps/blob/main/blueprints/automation/ham_dx_spot.yaml
   input:
     bands:
       name: Bands

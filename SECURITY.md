@@ -13,7 +13,7 @@ as soon as it's published, so the fix for a problem is to update.
 ## Reporting a vulnerability
 
 Please don't open a public issue. Report it privately instead:
-[**Report a vulnerability**](https://github.com/SWFX2324/swamp-fox-labs-apps/security/advisories/new)
+[**Report a vulnerability**](https://github.com/SWFX2324/swamp-fox-labs-ha-apps/security/advisories/new)
 (the Security tab, then **Report a vulnerability**). Only the maintainer sees it.
 
 Include what you found, the app version, and how to reproduce it. You'll hear back

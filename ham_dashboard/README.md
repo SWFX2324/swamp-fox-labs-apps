@@ -6,7 +6,7 @@ A read-only propagation and space-weather dashboard for amateur radio operators,
 in its own Home Assistant sidebar panel. It works on phones and desktops, in light
 and dark mode.
 
-![Space weather view](https://raw.githubusercontent.com/SWFX2324/swamp-fox-labs-apps/main/docs/screenshot-weather.png)
+![Space weather view](https://raw.githubusercontent.com/SWFX2324/swamp-fox-labs-ha-apps/main/docs/screenshot-weather.png)
 
 - **Propagation** tab: how each HF band should work from your QTH to any callsign,
   grid, prefix or point on the map, right now and hour by hour for the next 24 hours,

@@ -8,7 +8,7 @@ Home Assistant apps (add-ons) by Swamp Fox Labs, KR4FCD.
 2. Open the **⋮** menu → **Repositories**, and add:
 
    ```
-   https://github.com/SWFX2324/swamp-fox-labs-apps
+   https://github.com/SWFX2324/swamp-fox-labs-ha-apps
    ```
 
 3. The apps below appear under **Swamp Fox Labs Apps**.

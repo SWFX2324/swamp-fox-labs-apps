@@ -7,7 +7,7 @@ FROM ghcr.io/home-assistant/base:3.24@sha256:992dc6a5727b97a30da8dd259b489739299
 # version from config.yaml.
 ARG BUILD_VERSION=dev
 ENV APP_VERSION=${BUILD_VERSION}
-LABEL org.opencontainers.image.source="https://github.com/SWFX2324/swamp-fox-labs-apps"
+LABEL org.opencontainers.image.source="https://github.com/SWFX2324/swamp-fox-labs-ha-apps"
 
 RUN apk add --no-cache nodejs
 

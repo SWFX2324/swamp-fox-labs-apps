@@ -26,7 +26,7 @@ const STARTED = new Date().toISOString();
 const DATA_DIR = fs.existsSync('/data') ? '/data' : require('os').tmpdir();
 const STATIC_DIR = path.join(__dirname, 'static');
 const SWPC = 'https://services.swpc.noaa.gov';
-const UA = 'SwampFoxLabs-HamRadioDashboard/0.6 (Home Assistant app; github.com/SWFX2324/swamp-fox-labs-apps)';
+const UA = 'SwampFoxLabs-HamRadioDashboard/0.6 (Home Assistant app; github.com/SWFX2324/swamp-fox-labs-ha-apps)';
 
 // ---------------------------------------------------------------- options
 

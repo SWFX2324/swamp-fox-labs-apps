@@ -6,7 +6,7 @@ blueprint:
     use {{ band }}, {{ toward }}, {{ likely }}, {{ stations }} and {{ farthest }},
     for example "{{ band }} is open toward {{ toward }} ({{ likely }})".
   domain: automation
-  source_url: https://github.com/SWFX2324/swamp-fox-labs-apps/blob/main/blueprints/automation/ham_vhf_opening.yaml
+  source_url: https://github.com/SWFX2324/swamp-fox-labs-ha-apps/blob/main/blueprints/automation/ham_vhf_opening.yaml
   input:
     bands:
       name: Bands

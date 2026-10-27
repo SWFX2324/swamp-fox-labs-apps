@@ -7,7 +7,7 @@ blueprint:
     {{ distance }} and {{ bearing }}, for example
     "{{ activator }} is at {{ park }}, {{ distance }} km {{ bearing }}".
   domain: automation
-  source_url: https://github.com/SWFX2324/swamp-fox-labs-apps/blob/main/blueprints/automation/ham_pota_nearby.yaml
+  source_url: https://github.com/SWFX2324/swamp-fox-labs-ha-apps/blob/main/blueprints/automation/ham_pota_nearby.yaml
   input:
     max_km:
       name: Maximum distance

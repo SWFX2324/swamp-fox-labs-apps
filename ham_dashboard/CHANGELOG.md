@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.4
+
+The repository is now **swamp-fox-labs-ha-apps** (it was swamp-fox-labs-apps).
+Nothing changes in normal use and there's nothing to do: GitHub forwards the old
+address, so Home Assistant keeps finding updates. The app's links, blueprint
+sources and image labels now use the new name. Images up to 1.6.3 carry the old
+name in their signature; the Documentation tab shows how to check either.
+
 ## 1.6.3
 
 - **"At your QTH now" works without a nearby ionosonde.** It needs an ionosonde

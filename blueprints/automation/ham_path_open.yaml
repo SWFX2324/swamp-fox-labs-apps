@@ -6,7 +6,7 @@ blueprint:
     {{ band }}, {{ muf }}, {{ bearing }} and {{ heard }}, for example
     "{{ band }} is open to {{ label }} (beam {{ bearing }}°)".
   domain: automation
-  source_url: https://github.com/SWFX2324/swamp-fox-labs-apps/blob/main/blueprints/automation/ham_path_open.yaml
+  source_url: https://github.com/SWFX2324/swamp-fox-labs-ha-apps/blob/main/blueprints/automation/ham_path_open.yaml
   input:
     path:
       name: Saved path

@@ -142,7 +142,7 @@ class HomeAssistant {
     }
     this.mqtt.publish(DISCOVERY_TOPIC, JSON.stringify({
       dev: { ids: [NODE], name: 'Ham Radio', mf: 'Swamp Fox Labs', mdl: 'Ham Radio Dashboard', sw: VERSION },
-      o: { name: 'Ham Radio Dashboard', sw: VERSION, url: 'https://github.com/SWFX2324/swamp-fox-labs-apps' },
+      o: { name: 'Ham Radio Dashboard', sw: VERSION, url: 'https://github.com/SWFX2324/swamp-fox-labs-ha-apps' },
       avty_t: AVAILABILITY_TOPIC,
       cmps,
     }), { retain: true });

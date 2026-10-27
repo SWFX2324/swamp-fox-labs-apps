@@ -7,7 +7,7 @@ blueprint:
     not a guarantee: disconnect antennas whenever you hear thunder, whatever the
     dashboard says.
   domain: automation
-  source_url: https://github.com/SWFX2324/swamp-fox-labs-apps/blob/main/blueprints/automation/ham_lightning_disconnect.yaml
+  source_url: https://github.com/SWFX2324/swamp-fox-labs-ha-apps/blob/main/blueprints/automation/ham_lightning_disconnect.yaml
   input:
     danger_sensor:
       name: Lightning danger sensor

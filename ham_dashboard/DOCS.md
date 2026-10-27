@@ -99,13 +99,13 @@ connections**. It lists each data source with when it last updated and any error
 DX cluster, APRS-IS and Home Assistant connections.
 
 **Copy details for a bug report** copies the app version and this list, ready to
-paste into a [GitHub issue](https://github.com/SWFX2324/swamp-fox-labs-apps/issues/new/choose).
+paste into a [GitHub issue](https://github.com/SWFX2324/swamp-fox-labs-ha-apps/issues/new/choose).
 It leaves out your callsign and shortens your grid to 4 characters, since issues
 are public.
 
 ## Space weather
 
-![The Space weather tab](https://raw.githubusercontent.com/SWFX2324/swamp-fox-labs-apps/main/docs/screenshots/weather.png)
+![The Space weather tab](https://raw.githubusercontent.com/SWFX2324/swamp-fox-labs-ha-apps/main/docs/screenshots/weather.png)
 
 - **Solar & geomagnetic conditions** – SFI, sunspot number, A and K index, X-ray flux,
   solar wind speed, Bz and estimated noise floor.
@@ -168,7 +168,7 @@ are public.
 
 ## Propagation
 
-![The Propagation tab](https://raw.githubusercontent.com/SWFX2324/swamp-fox-labs-apps/main/docs/screenshots/propagation.png)
+![The Propagation tab](https://raw.githubusercontent.com/SWFX2324/swamp-fox-labs-ha-apps/main/docs/screenshots/propagation.png)
 
 Point-to-point analysis: how each HF band should work from your QTH to anywhere,
 right now and over the next 24 hours.
@@ -270,7 +270,7 @@ path removes its sensor.
 
 ## Repeaters
 
-![The Repeaters tab](https://raw.githubusercontent.com/SWFX2324/swamp-fox-labs-apps/main/docs/screenshots/repeaters.png)
+![The Repeaters tab](https://raw.githubusercontent.com/SWFX2324/swamp-fox-labs-ha-apps/main/docs/screenshots/repeaters.png)
 
 Repeaters near your grid square, from the community-maintained
 [HearHam](https://hearham.com/) directory.
@@ -290,7 +290,7 @@ before you transmit.
 
 ## APRS
 
-![The APRS tab](https://raw.githubusercontent.com/SWFX2324/swamp-fox-labs-apps/main/docs/screenshots/aprs.png)
+![The APRS tab](https://raw.githubusercontent.com/SWFX2324/swamp-fox-labs-ha-apps/main/docs/screenshots/aprs.png)
 
 Live APRS activity around you, received directly from the
 [APRS-IS](https://www.aprs2.net/) network. The add-on keeps one receive-only
@@ -312,7 +312,7 @@ grid square; changing the grid in a browser moves the map but not the feed.
 
 ## POTA
 
-![The POTA tab](https://raw.githubusercontent.com/SWFX2324/swamp-fox-labs-apps/main/docs/screenshots/pota.png)
+![The POTA tab](https://raw.githubusercontent.com/SWFX2324/swamp-fox-labs-ha-apps/main/docs/screenshots/pota.png)
 
 Parks on the Air activators on the air right now, from [pota.app](https://pota.app/).
 
@@ -327,7 +327,7 @@ only allows approved applications.
 
 ## Satellites
 
-![The Satellites tab](https://raw.githubusercontent.com/SWFX2324/swamp-fox-labs-apps/main/docs/screenshots/satellites.png)
+![The Satellites tab](https://raw.githubusercontent.com/SWFX2324/swamp-fox-labs-ha-apps/main/docs/screenshots/satellites.png)
 
 Pass predictions for your grid square over the next 24 hours, for popular FM and
 linear amateur satellites: ISS, SO-50, PO-101, AO-91, RS-44, FO-29 and AO-7.
@@ -347,7 +347,7 @@ Satellites go on and off the air often, so check
 
 ## Callsign lookup
 
-![The Callsign lookup tab](https://raw.githubusercontent.com/SWFX2324/swamp-fox-labs-apps/main/docs/screenshots/lookup.png)
+![The Callsign lookup tab](https://raw.githubusercontent.com/SWFX2324/swamp-fox-labs-ha-apps/main/docs/screenshots/lookup.png)
 
 Type a callsign, or click any callsign in the DX spots, PSKReporter or repeater
 lists. The lookup shows name, address, grid, license class and dates, QSL methods,
@@ -365,7 +365,7 @@ Each callsign is cached for a day so repeated lookups don't hit QRZ again.
 
 ## Reference
 
-![The Reference tab](https://raw.githubusercontent.com/SWFX2324/swamp-fox-labs-apps/main/docs/screenshots/reference.png)
+![The Reference tab](https://raw.githubusercontent.com/SWFX2324/swamp-fox-labs-ha-apps/main/docs/screenshots/reference.png)
 
 - **US amateur band plan**: where each license class (Technician, General, Advanced,
   Amateur Extra) can transmit on every band from 160 m to 70 cm, with CW/data,
@@ -455,16 +455,16 @@ its description.
 
 | Blueprint | What it does | Import |
 | --- | --- | --- |
-| **VHF band opens** | Runs your actions when 6 m or 2 m opens near you. | [Import](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FSWFX2324%2Fswamp-fox-labs-apps%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fham_vhf_opening.yaml) |
-| **Band opens on a saved path** | Runs your actions when a band turns Good on one of your saved paths (or a chosen one). | [Import](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FSWFX2324%2Fswamp-fox-labs-apps%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fham_path_open.yaml) |
-| **Watched DX is spotted** | Runs your actions when the DX cluster spots a callsign on your `spot_watch` list, optionally only on some bands. | [Import](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FSWFX2324%2Fswamp-fox-labs-apps%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fham_dx_spot.yaml) |
-| **POTA activation nearby** | Runs your actions when a new park activation appears within a distance you choose. | [Import](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FSWFX2324%2Fswamp-fox-labs-apps%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fham_pota_nearby.yaml) |
-| **Disconnect antennas when lightning is near** | Runs your actions turns off switches (an antenna relay, say) when storm safety turns to Danger, and optionally turns them back on after it has been safe for a while. | [Import](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FSWFX2324%2Fswamp-fox-labs-apps%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fham_lightning_disconnect.yaml) |
+| **VHF band opens** | Runs your actions when 6 m or 2 m opens near you. | [Import](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FSWFX2324%2Fswamp-fox-labs-ha-apps%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fham_vhf_opening.yaml) |
+| **Band opens on a saved path** | Runs your actions when a band turns Good on one of your saved paths (or a chosen one). | [Import](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FSWFX2324%2Fswamp-fox-labs-ha-apps%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fham_path_open.yaml) |
+| **Watched DX is spotted** | Runs your actions when the DX cluster spots a callsign on your `spot_watch` list, optionally only on some bands. | [Import](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FSWFX2324%2Fswamp-fox-labs-ha-apps%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fham_dx_spot.yaml) |
+| **POTA activation nearby** | Runs your actions when a new park activation appears within a distance you choose. | [Import](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FSWFX2324%2Fswamp-fox-labs-ha-apps%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fham_pota_nearby.yaml) |
+| **Disconnect antennas when lightning is near** | Runs your actions turns off switches (an antenna relay, say) when storm safety turns to Danger, and optionally turns them back on after it has been safe for a while. | [Import](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FSWFX2324%2Fswamp-fox-labs-ha-apps%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fham_lightning_disconnect.yaml) |
 
 The **Import** links open your Home Assistant (via my.home-assistant.io). You can
 also go to Settings → Automations & scenes → Blueprints → **Import blueprint** and
 paste the blueprint's address from the
-[blueprints folder](https://github.com/SWFX2324/swamp-fox-labs-apps/tree/main/blueprints/automation).
+[blueprints folder](https://github.com/SWFX2324/swamp-fox-labs-ha-apps/tree/main/blueprints/automation).
 The lightning blueprint is an aid, not a guarantee: disconnect antennas whenever you
 hear thunder.
 
@@ -680,7 +680,7 @@ reporting it helps (below).
 **Reporting a problem.** In settings → **Data sources and connections**, use
 **Copy details for a bug report** (it leaves out your callsign and shortens your
 grid) and paste it into a
-[GitHub issue](https://github.com/SWFX2324/swamp-fox-labs-apps/issues/new/choose),
+[GitHub issue](https://github.com/SWFX2324/swamp-fox-labs-ha-apps/issues/new/choose),
 with the app's log from Settings → Apps → Ham Radio Dashboard → **Log**.
 
 ## Security and privacy
@@ -699,10 +699,12 @@ The dashboard is receive-only: it never transmits, and it only reads public data
   `ha host logs --lines 20000 | grep 'apparmor="DENIED"' | grep ham_dashboard`.
 - **Signed images.** Every published image is signed with Cosign, keyless, by this
   repository's build workflow. To check an image came from here:
-  `cosign verify ghcr.io/swfx2324/ham-dashboard-amd64:1.5.0 --certificate-identity
-  https://github.com/SWFX2324/swamp-fox-labs-apps/.github/workflows/build.yaml@refs/heads/main
+  `cosign verify ghcr.io/swfx2324/ham-dashboard-amd64:1.6.4 --certificate-identity
+  https://github.com/SWFX2324/swamp-fox-labs-ha-apps/.github/workflows/build.yaml@refs/heads/main
   --certificate-oidc-issuer https://token.actions.githubusercontent.com`
   (use `ham-dashboard-aarch64` on a Raspberry Pi, and your installed version).
+  Images up to 1.6.3 were signed before the repository was renamed: for those,
+  use `swamp-fox-labs-apps` in place of `swamp-fox-labs-ha-apps` in the identity.
 - **Who can use it.** Every Home Assistant user sees **Ham Radio** in the
   sidebar and can use the whole dashboard, including their own browser settings.
   Only administrators can change what the household shares: setup (the app's

@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Documentation
-    url: https://github.com/SWFX2324/swamp-fox-labs-apps/blob/main/ham_dashboard/DOCS.md
+    url: https://github.com/SWFX2324/swamp-fox-labs-ha-apps/blob/main/ham_dashboard/DOCS.md
     about: Setup, every tab, Home Assistant sensors and example automations.
   - name: Report a security vulnerability
-    url: https://github.com/SWFX2324/swamp-fox-labs-apps/security/advisories/new
+    url: https://github.com/SWFX2324/swamp-fox-labs-ha-apps/security/advisories/new
     about: Report it privately here instead of opening a public issue.
